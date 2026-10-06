@@ -182,8 +182,8 @@ Do not fix unrelated pre-existing issues.
   validate input into the declared zero-padded 24-hour sort key. For canonical text evidence,
   use the bounded direct form from `PowerFxGuide.md`: guard the same input for blank, then put
   the direct declared-source `Patch` with `Text(TimeValue(same input), "HH:mm")` inside
-  `IfError`. Staged normalization can be legitimate, but the static validator reports it as
-  unverified. Keep display formatting separate and preserve the declared invalid/blank state.
+  `IfError`. Staged normalization can be legitimate, but manual static inspection will
+  treat it as unverified. Keep display formatting separate and preserve the declared invalid/blank state.
 - For short finite-choice fields, use the radio, visible choice buttons, or directly
   selectable dropdown named by the brief, populate all concrete options, configure visible
   item text, and give required fields a valid default when the business rule permits one.
