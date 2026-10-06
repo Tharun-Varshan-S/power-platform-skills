@@ -1505,7 +1505,7 @@ prove that the requested outcome occurred.
     `cmbItem.Selected.ID`); when a staging variable is used instead, its `Set(...)` or
     `UpdateContext({...})` assignment from the corresponding input control must be present
     and reachable before the mutation consumes it, not only its initialization seed.
-    `validate-canvas-acceptance.cs` enforces this bounded static provenance for directional
+    This bounded static provenance is required for directional
     receipt old/amount operands; that liveness check does not establish that a staged
     amount is valid, so separately inspect its `Default`, `Min`, current-value gate, and
     reset behavior.

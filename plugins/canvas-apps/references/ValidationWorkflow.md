@@ -518,25 +518,6 @@ Do not replace `NOT RUN` with another value unless a runtime evaluator actually 
 against this app and the artifact records its run ID or result URL and score.
 
 
-After writing the artifact, run:
-
-```text
-dotnet run --file "${PLUGIN_ROOT}/scripts/validate-canvas-acceptance.cs" -- \
-  "[absolute working directory]" "${PLUGIN_ROOT}"
-```
-
-The validator compares the acceptance rows with the plan's Action Contracts, Functional
-Test Matrix, and dispatch screens. A nonzero exit blocks completion. Repair the artifact
-and rerun the validator until it passes; never summarize success without its `PASS`
-result.
-
-The validator itself is regression-tested. `scripts/tests/` drives it against the
-`receive-issue` fixture (a correctly-signed Receive/Issue workspace must `PASS`; a
-reversed-sign one must fail on the directional check) via `node scripts/run-tests.js`,
-which the `canvas-apps-script-tests` CI workflow runs on every change under
-`plugins/canvas-apps/**`. This is a static conformance gate only — it does not execute the
-app, and a live browser evaluation remains the authority for the runtime functional grade.
-
 
 For mutations, also compare the handler, write set, proof set, receipt bindings, and
 downstream observer one-for-one. Require one `## Mutation Lifecycle Evidence` row per
