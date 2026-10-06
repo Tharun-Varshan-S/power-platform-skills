@@ -245,8 +245,8 @@ already persisted, not the original — the runtime failure a single-operation s
 catch. The `Second-op old-value binding` must declare the exact compile-ready planned
 `Control.Property: =formula` that sources the old value for the second operation from the
 canonical source (e.g. a `LookUp` over the patched collection), not a stale selection
-snapshot. Final acceptance compares the implemented YAML to this contract. The validator
-does not machine-check this table; it is a required reviewer/authoring proof.]
+snapshot. Final acceptance compares the implemented YAML to this contract. Manual inspection
+must verify this table; it is a required reviewer/authoring proof.]
 
 | Pair | Same-record ID expression | Sequence (start -> op1 amount -> mid -> op2 amount -> end) | Second-op old-value binding (reads mutated canonical source) |
 | ---- | ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ |

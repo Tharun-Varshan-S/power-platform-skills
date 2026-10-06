@@ -345,7 +345,7 @@ refresh completed, a destination rendered the record, or focus moved in the runn
 When the plan declares state-driven surface visibility—either in its dedicated table or
 with an exact `Surface.Visible=state predicate` Action Contract observer—static
 acceptance must preserve the named surface's exact `Visible` binding. The final YAML
-predicate must be the same as the plan or fall within the validator's bounded Boolean
+predicate must be the same as the plan or fall within bounded Boolean
 equivalence rules. This contract does not infer requirements for always-visible surfaces,
 child-only visibility, navigation-based disclosure, or visibility absent from the plan.
 
@@ -445,12 +445,12 @@ For list-driven requirements, post-export/runtime proof must include a screensho
 least one real data row visibly rendered and its required row action reachable. A runtime
 probe reporting only four interactive descendants is hard-fail evidence for an expected
 multi-control/list screen, not support for static success. Keep these claims labeled
-runtime/post-export: the local static validator can reject risky Gallery shapes but cannot
+runtime/post-export: manual static inspection can reject risky Gallery shapes but cannot
 prove that a host rendered rows.
 
 When the plan contains an opposing directional pair, include `## Directional Mutation
-Evidence` with exactly one row per pair. This is an executable gate, not a self-reported
-trace: copy final-YAML formulas exactly. The validator independently requires one nullable
+Evidence` with exactly one row per pair. This is a manual static-inspection gate, not a self-reported
+trace: copy final-YAML formulas exactly. Static inspection independently requires one nullable
 selected ID initialized/reset blank and assigned by row selection, consistent consumers,
 an actual operation-state reset event, representable blank/non-positive amount states, a
 gate that rejects them, plus/minus arithmetic, one canonical source
@@ -461,8 +461,7 @@ ancestor may be gated to the selected/valid state. A gallery-only selected-ID ev
 requires bounded Gallery `Height`, explicit positive `TemplateSize`, numeric
 `TemplatePadding`, `Items`, and row controls.
 For the amount rejection, accept either supported equivalent spelling in final YAML:
-`value <= 0` or `Not(value > 0)`; do not prescribe a third form unsupported by the
-validator.
+`value <= 0` or `Not(value > 0)`; do not prescribe a third unsupported form.
 
 Receipt controls may include visible label text. Static evidence still has to expose one
 unambiguous underlying value expression for each required receipt field. A direct value
@@ -509,8 +508,7 @@ Sequence Evidence` with one row per same-record pair. It records the same-record
 `start -> op1 -> mid -> op2 -> end` sequence, and the exact final-YAML binding that sources
 the second operation's old value from the canonical collection (e.g. a `LookUp` over the
 patched source), proving the second operation reads the already-mutated value, not the
-original. Unlike the directional table, the validator does not machine-check this table —
-no static check can prove the running app's submit button becomes clickable or that the
+original. Like the directional table, no static check can prove the running app's submit button becomes clickable or that the
 second read observes the mutated value; that remains the live browser evaluation's job — so
 copy the formulas exactly and treat it as a required authoring/reviewer proof.
 

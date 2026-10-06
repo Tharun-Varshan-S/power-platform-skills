@@ -87,7 +87,7 @@ values to mix silently.
 
 Prefer a typed Date/Time column and sort that field directly. When a local/mock source must
 store text, validate the same input that is written and persist a separate zero-padded
-24-hour sort key. The static acceptance validator deliberately supports a bounded direct
+24-hour sort key. Static inspection deliberately supports a bounded direct
 form: an outer blank guard and an `IfError` whose successful expression directly writes
 `Text(TimeValue(the same input), "HH:mm")` to the declared source field. Staged variables
 and other control flow may be valid at runtime, but are reported as unverified rather than
