@@ -345,8 +345,8 @@ refresh completed, a destination rendered the record, or focus moved in the runn
 When the plan declares state-driven surface visibility—either in its dedicated table or
 with an exact `Surface.Visible=state predicate` Action Contract observer—static
 acceptance must preserve the named surface's exact `Visible` binding. The final YAML
-predicate must be the same as the plan or fall within bounded Boolean
-equivalence rules. This contract does not infer requirements for always-visible surfaces,
+predicate must be the same as the plan or be a provably equivalent Boolean
+form. This contract does not infer requirements for always-visible surfaces,
 child-only visibility, navigation-based disclosure, or visibility absent from the plan.
 
 The first line of the file must be exactly `Runtime evaluation: NOT RUN`; do not place a
