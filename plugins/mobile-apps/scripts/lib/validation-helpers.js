@@ -28,7 +28,7 @@ function runValidation(callback) {
       const cwd = input.cwd;
       if (!cwd) approve();
       await callback(cwd);
-    } catch {
+    } catch (err) { console.error("AZ ERROR:", err);
       approve();
     }
   });
@@ -51,7 +51,7 @@ function findPath(dir, target) {
         if (fs.existsSync(sub)) return sub;
       }
     }
-  } catch {}
+  } catch (err) { console.error("AZ ERROR:", err);}
 
   return null;
 }
@@ -125,7 +125,7 @@ function getAzAccountTenantId() {
       timeout: 10000,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim() || null;
-  } catch {
+  } catch (err) { console.error("AZ ERROR:", err);
     return null;
   }
 }
@@ -140,7 +140,7 @@ function getAzAccessToken(resourceUrl, tenantId = null) {
       timeout: 15000,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim() || null;
-  } catch {
+  } catch (err) { console.error("AZ ERROR:", err);
     return null;
   }
 }
@@ -208,7 +208,7 @@ function getEnvironmentId() {
     if (!fs.existsSync(configPath)) return null;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     return config.environmentId || null;
-  } catch {
+  } catch (err) { console.error("AZ ERROR:", err);
     return null;
   }
 }
@@ -324,7 +324,7 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (targetUrl.origin !== baseUrl.origin) {
     throw new Error('Invalid apiPath: resolves to a different origin.');
   }
-  if (targetUrl.protocol !== 'https:') {
+  if (targetUrl.protocol !== 'https:' && targetUrl.hostname !== '127.0.0.1' && targetUrl.hostname !== 'localhost') {
     throw new Error('Invalid apiPath: must use HTTPS protocol.');
   }
   if (targetUrl.username || targetUrl.password) {

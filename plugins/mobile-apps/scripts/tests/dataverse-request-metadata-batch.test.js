@@ -230,7 +230,7 @@ function makeTempDir(t) {
 function fakeAzEnv(overrides = {}) {
   return {
     ...process.env,
-    NODE_OPTIONS: `--require=${fakeAzPreload}`,
+    NODE_OPTIONS: `--require="${fakeAzPreload}"`,
     FAKE_AZ_STATIC_TOKEN: 'test-token',
     ...overrides,
   };

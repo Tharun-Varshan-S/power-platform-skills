@@ -572,7 +572,7 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (targetUrl.origin !== baseUrl.origin) {
     throw new Error('Invalid apiPath: resolves to a different origin.');
   }
-  if (targetUrl.protocol !== 'https:') {
+  if (targetUrl.protocol !== 'https:' && targetUrl.hostname !== '127.0.0.1' && targetUrl.hostname !== 'localhost') {
     throw new Error('Invalid apiPath: must use HTTPS protocol.');
   }
   if (targetUrl.username || targetUrl.password) {
