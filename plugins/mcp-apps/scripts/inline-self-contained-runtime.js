@@ -15,7 +15,7 @@ function parseArgs(argv) {
     const value = argv[index];
     if (value === '--input' || value === '--output') {
       const next = argv[index + 1];
-      if (!next) throw new Error(`Argument '${value}' requires a path value to be provided`);
+      if (!next || next.startsWith('--')) throw new Error(`Argument '${value}' requires a path value to be provided`);
       result[value.slice(2)] = path.resolve(next);
       index += 1;
     } else if (value === '--prepare') {

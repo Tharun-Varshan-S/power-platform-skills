@@ -120,7 +120,7 @@ export function normalizeDataverseGuid(value: string | undefined | null): string
  *     cr3e9_inspectionid: inspectionId,
  *     cr3e9_aircraftid: aircraftId,
  *     // ...
- *   } as Record<string, unknown>);
+ *   } as Pick<Parameters<typeof Cr3e9_inspectionService.create>[0], 'cr3e9_inspectionid' | 'cr3e9_aircraftid'>);
  *   router.replace(`/inspections/${inspectionId}`);
  *
  * Guardrails:
