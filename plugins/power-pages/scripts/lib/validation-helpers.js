@@ -317,14 +317,14 @@ function validateBapPollingUrl(location, initiatingUrl, purpose = 'BAP Location 
 function runAzureCli(args, deps = {}) {
   const execFile = deps.execFile || execFileSync;
   const platform = deps.platform || process.platform;
-  const options = { encoding: 'utf8', timeout: 15000, shell: false };
+  const execOptions = { encoding: 'utf8', timeout: 15000, shell: false };
   if (platform === 'win32') {
     // Azure CLI is exposed as az.cmd on Windows. Route the fixed argument array
     // through cmd.exe because Node cannot execute .cmd shims directly.
     // See: https://nodejs.org/api/child_process.html#spawning-bat-and-cmd-files-on-windows
-    return execFile('cmd.exe', ['/d', '/s', '/c', 'az.cmd', ...args], options);
+    return execFile('cmd.exe', ['/d', '/s', '/c', 'az.cmd', ...args], execOptions);
   }
-  return execFile('az', args, options);
+  return execFile('az', args, execOptions);
 }
 
 function getAuthToken(resourceUrl, deps = {}) {

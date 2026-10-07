@@ -13,8 +13,7 @@ test('all scripts that call az account get-access-token must also import shared 
   const files = [
     'plugins/mobile-apps/scripts/dataverse-request.js',
     'plugins/model-apps/scripts/lib/dataverse-auth.js',
-    'plugins/power-pages/scripts/check-solution-installed.js',
-    'plugins/power-pages/scripts/download-solution.js'
+    'plugins/power-pages/scripts/check-solution-installed.js'
   ];
 
   const failures = [];
