@@ -116,11 +116,12 @@ export function normalizeDataverseGuid(value: string | undefined | null): string
  * Usage:
  *   import { newId, lookupName } from '@/utils';
  *   const inspectionId = newId();
- *   await Cr3e9_inspectionService.create({
+ *   const payload: Pick<Parameters<typeof Cr3e9_inspectionService.create>[0], 'cr3e9_inspectionid' | 'cr3e9_aircraftid'> = {
  *     cr3e9_inspectionid: inspectionId,
  *     cr3e9_aircraftid: aircraftId,
  *     // ...
- *   } as Pick<Parameters<typeof Cr3e9_inspectionService.create>[0], 'cr3e9_inspectionid' | 'cr3e9_aircraftid'>);
+ *   };
+ *   await Cr3e9_inspectionService.create(payload as Parameters<typeof Cr3e9_inspectionService.create>[0]);
  *   router.replace(`/inspections/${inspectionId}`);
  *
  * Guardrails:
