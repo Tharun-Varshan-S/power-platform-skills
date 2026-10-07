@@ -40,7 +40,7 @@ This keeps hook behavior in one place and avoids relying on skill-frontmatter ho
 
 ## Skills
 
-The plugin provides 34 skills that cover the full lifecycle of a Power Pages site — scaffolding, deployment, data modeling, backend integration, authentication, ALM and CI/CD, security review, testing, auditing, and platform migrations. Each skill is invoked conversationally — just describe what you want to do.
+The plugin provides 35 skills that cover the full lifecycle of a Power Pages site — scaffolding, deployment, data modeling, backend integration, authentication, ALM and CI/CD, security review, testing, auditing, and platform migrations. Each skill is invoked conversationally — just describe what you want to do.
 
 ### Site scaffolding and deployment
 
@@ -50,7 +50,7 @@ The plugin provides 34 skills that cover the full lifecycle of a Power Pages sit
 >
 > "Create a site from a Power Pages SPA template"
 
-Starts a complete code site either from a curated SPA template or from a fresh framework scaffold. The template path previews installable templates, imports the selected unmanaged solution into your environment, applies optional seed data, activates the site, and opens the live URL. The from-scratch path applies your design direction (fonts, colors, layout), builds out pages and components, and provides a live preview throughout development.
+Starts a complete code site either from a curated SPA template or from a fresh framework scaffold. The template path previews installable templates, imports the selected unmanaged solution into your environment, applies optional seed data, activates the site, and opens the live URL. The from-scratch path turns your aesthetic, mood, and optional brand (an existing website, or your colors and logo) into a design thesis and a page-by-page narrative, builds the pages and components with a live preview throughout, and then screenshots every page at desktop and mobile widths and refines it against a ten-category design rubric before the accessibility audit.
 
 - Start from a curated SPA template or scaffold from scratch
 - Choose from React, Vue, Angular, or Astro
@@ -382,6 +382,20 @@ Surfaces PAC CLI upload errors and Dataverse async operation errors, pattern-mat
 - Offers auto-fixes with explicit per-fix user confirmation
 
 ### Polish
+
+#### `/exceptional-web-design`
+
+> "Review the design of https://contoso.powerappsportals.com"
+>
+> "Why does my site look generic? What should I change?"
+
+Reviews the design of an existing site - a live URL or a local project folder - and tells you what to change, without changing anything.
+It captures up to eight key pages at desktop and mobile widths, runs an accessibility audit, and scores the site against the same ten-category design rubric `/create-site` builds to. Pages beyond that are listed in the report so you can ask for them next.
+The result is a scorecard plus prioritized recommendations, each naming the page and element, why it matters, and the exact change, with a redesign direction when the site needs more than fixes.
+
+- Works from a URL (pages are discovered from the site's navigation) or from a project folder, which it reads alongside a URL where the site runs - the deployed site or a dev server you start - or on its own for a code-only review
+- Runs nothing from your project and changes nothing in it: screenshots go to a temporary folder outside the project, and nothing is installed
+- Pages that require sign-in are listed as not reviewed, because the capture cannot sign in
 
 #### `/add-seo`
 
