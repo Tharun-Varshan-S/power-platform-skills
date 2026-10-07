@@ -1101,9 +1101,9 @@ test('copyMissingTemplateFiles resolves check-then-act TOCTOU when another proce
   const customFs = {
     ...fs,
     mkdirSync(targetPath, options) {
-      // Simulate another process creating the directory just before we do
+      // Simulate another process creating the directory immediately before this call.
       fs.mkdirSync(targetPath, options);
-      // Since recursive: true is passed, calling it again should not throw
+      // The original non-recursive mkdir now receives EEXIST, as it would in the race.
       return fs.mkdirSync(targetPath, options);
     }
   };
