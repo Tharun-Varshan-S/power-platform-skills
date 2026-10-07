@@ -100,6 +100,9 @@ function copyMissingTemplateFiles(sourcePath, clonedPath, fsImpl = fs) {
                 lastError = lstatErr;
                 continue;
               }
+              if (lstatErr.code === 'ENOTDIR') {
+                throw new Error(`Clone path conflicts with template directory: ${relativePath}`);
+              }
               throw lstatErr;
             }
           }

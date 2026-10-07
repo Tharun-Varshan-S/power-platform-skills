@@ -1129,6 +1129,40 @@ test('copyMissingTemplateFiles rejects when a file exists where a directory is e
 });
 
 
+test('copyMissingTemplateFiles maps ENOTDIR to conflict error during race condition', (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const source = path.join(dir, 'source');
+  const cloned = path.join(dir, 'cloned');
+  fs.mkdirSync(path.join(source, 'nested'), { recursive: true });
+  fs.mkdirSync(cloned, { recursive: true });
+
+  const customFs = {
+    ...fs,
+    mkdirSync(targetPath, options) {
+      if (targetPath.includes('cloned') && targetPath.endsWith('nested')) {
+        const err = new Error('ENOTDIR');
+        err.code = 'ENOTDIR';
+        throw err;
+      }
+      return fs.mkdirSync(targetPath, options);
+    },
+    lstatSync(targetPath) {
+      if (targetPath.includes('cloned') && targetPath.endsWith('nested')) {
+        const err = new Error('ENOTDIR');
+        err.code = 'ENOTDIR';
+        throw err;
+      }
+      return fs.lstatSync(targetPath);
+    }
+  };
+
+  assert.throws(
+    () => copyMissingTemplateFiles(source, cloned, customFs),
+    /Clone path conflicts with template directory: nested/
+  );
+});
+
 test('copyMissingTemplateFiles rejects when a symlink exists where a directory is expected', (t) => {
   if (process.platform === 'win32') {
     t.skip('Symlinks require privileges on Windows');
