@@ -4,6 +4,7 @@
  * re-implement these inline in screen files.
  */
 
+// @ts-ignore: expo-crypto is provided by the target Expo project
 import * as Crypto from 'expo-crypto';
 
 /**
