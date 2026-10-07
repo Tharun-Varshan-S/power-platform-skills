@@ -283,6 +283,65 @@ const CLOUD_TO_SITE_DOMAIN = {
   'China': 'powerappsportals.cn',
 };
 
+/**
+ * Validates a Dataverse OData API path to prevent path traversal and origin changes.
+ * Resolves the path against the base API URL and ensures it remains within scope.
+ *
+ * @param {string} apiPath - The relative API path (e.g., "accounts?$top=1")
+ * @param {string} trustedEnvUrl - The validated environment URL
+ * @returns {string} The fully resolved and validated HTTPS URL
+ */
+function validateDataverseApiPath(apiPath, trustedEnvUrl) {
+  if (typeof apiPath !== 'string' || apiPath.trim() === '') {
+    throw new Error('Invalid apiPath: must be a non-empty string.');
+  }
+  if (apiPath.length > 2000) {
+    throw new Error('Invalid apiPath: exceeds maximum length of 2000 characters.');
+  }
+  if (/[\u0000-\u001F\u007F]/.test(apiPath)) {
+    throw new Error('Invalid apiPath: contains control characters.');
+  }
+  if (apiPath.includes('#')) {
+    throw new Error('Invalid apiPath: fragments (#) are not allowed.');
+  }
+
+  // Strip exactly one leading slash for backward compatibility, if present
+  let normalizedPath = apiPath;
+  if (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.substring(1);
+  }
+
+  const API_BASE_PATH = '/api/data/v9.2/';
+  const baseUrl = new URL(API_BASE_PATH, trustedEnvUrl);
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(normalizedPath, baseUrl);
+  } catch (err) {
+    throw new Error('Invalid apiPath: could not parse URL.');
+  }
+
+  if (targetUrl.origin !== baseUrl.origin) {
+    throw new Error('Invalid apiPath: resolves to a different origin.');
+  }
+  if (targetUrl.protocol !== 'https:') {
+    throw new Error('Invalid apiPath: must use HTTPS protocol.');
+  }
+  if (targetUrl.username || targetUrl.password) {
+    throw new Error('Invalid apiPath: credentials in URL are not allowed.');
+  }
+  if (!targetUrl.pathname.startsWith(baseUrl.pathname)) {
+    throw new Error('Invalid apiPath: resolves outside the API base path.');
+  }
+
+  // Defense in depth: reject encoded slashes/backslashes in the pathname portion
+  if (/%2f|%5c/i.test(targetUrl.pathname)) {
+    throw new Error('Invalid apiPath: encoded path separators are not allowed in the path.');
+  }
+
+  return targetUrl.href;
+}
+
 module.exports = {
   approve,
   block,
@@ -299,4 +358,5 @@ module.exports = {
   getEnvironmentId,
   CLOUD_TO_API,
   CLOUD_TO_SITE_DOMAIN,
+  validateDataverseApiPath,
 };

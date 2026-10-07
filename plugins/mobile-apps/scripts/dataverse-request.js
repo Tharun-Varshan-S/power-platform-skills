@@ -54,7 +54,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { getAuthToken, makeRequest } = require('./lib/validation-helpers');
+const { getAuthToken, makeRequest, validateDataverseApiPath } = require('./lib/validation-helpers');
 
 const READ_REQUEST_TIMEOUT_MS = 30000;
 const MUTATION_REQUEST_TIMEOUT_MS = 120000;
@@ -162,7 +162,7 @@ function parseArgs() {
 }
 
 async function doRequest(envUrl, method, apiPath, body, token, includeHeaders, solution) {
-  const url = `${envUrl}/api/data/v9.2/${apiPath}`;
+  const url = validateDataverseApiPath(apiPath, envUrl);
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
