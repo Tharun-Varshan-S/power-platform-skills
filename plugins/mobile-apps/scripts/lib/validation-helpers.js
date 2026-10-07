@@ -28,7 +28,7 @@ function runValidation(callback) {
       const cwd = input.cwd;
       if (!cwd) approve();
       await callback(cwd);
-    } catch (err) { console.error("AZ ERROR:", err);
+    } catch {
       approve();
     }
   });
@@ -51,7 +51,7 @@ function findPath(dir, target) {
         if (fs.existsSync(sub)) return sub;
       }
     }
-  } catch (err) { console.error("AZ ERROR:", err);}
+  } catch {}
 
   return null;
 }
@@ -125,7 +125,7 @@ function getAzAccountTenantId() {
       timeout: 10000,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim() || null;
-  } catch (err) { console.error("AZ ERROR:", err);
+  } catch {
     return null;
   }
 }
@@ -140,7 +140,7 @@ function getAzAccessToken(resourceUrl, tenantId = null) {
       timeout: 15000,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim() || null;
-  } catch (err) { console.error("AZ ERROR:", err);
+  } catch {
     return null;
   }
 }
@@ -208,7 +208,7 @@ function getEnvironmentId() {
     if (!fs.existsSync(configPath)) return null;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     return config.environmentId || null;
-  } catch (err) { console.error("AZ ERROR:", err);
+  } catch {
     return null;
   }
 }
@@ -295,8 +295,8 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (typeof apiPath !== 'string' || apiPath.trim() === '') {
     throw new Error('Invalid apiPath: must be a non-empty string.');
   }
-  if (apiPath.length > 2000) {
-    throw new Error('Invalid apiPath: exceeds maximum length of 2000 characters.');
+  if (apiPath.length > 8000) {
+    throw new Error('Invalid apiPath: exceeds maximum length of 8000 characters.');
   }
   if (/[\u0000-\u001F\u007F]/.test(apiPath)) {
     throw new Error('Invalid apiPath: contains control characters.');
