@@ -848,6 +848,7 @@ module.exports = {
   tokenFailureMessage,
   makeRequest,
   dataverseRequest,
+  validateDataverseApiPath,
   ensureOk,
   label,
   requiredLevel,

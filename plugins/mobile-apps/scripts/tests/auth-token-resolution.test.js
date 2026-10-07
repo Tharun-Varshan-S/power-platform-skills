@@ -55,7 +55,7 @@ function runGetAuthToken(t, env = {}, explicitTenantId = null) {
     encoding: 'utf8',
     env: {
       ...process.env,
-      NODE_OPTIONS: `--require=${FAKE_AZ_PRELOAD}`,
+      NODE_OPTIONS: `--require="${FAKE_AZ_PRELOAD}"`,
       FAKE_AZ_LOG: logPath,
       // Cleared unless a test opts in — the ambient shell may have them set.
       POWER_PLATFORM_TENANT_ID: '',
@@ -140,4 +140,31 @@ test('final fallback mints an unqualified token when no tenant resolves', (t) =>
   assert.match(log, /account show/);
   assert.equal(token, 'token-for:active-account');
   assert.doesNotMatch(log, /--tenant/);
+});
+
+test('preload script loads correctly even if path contains spaces', (t) => {
+  const spaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'space test-'));
+  const preloadCopy = path.join(spaceDir, 'fake-az-preload.js');
+  fs.copyFileSync(FAKE_AZ_PRELOAD, preloadCopy);
+  t.after(() => fs.rmSync(spaceDir, { recursive: true, force: true }));
+
+  const logPath = makeFakeAzLog(t);
+  const script = `
+    const { getAuthToken } = require(${JSON.stringify(HELPERS)});
+    getAuthToken(${JSON.stringify(UNREACHABLE_ENV_URL)}, 'space-tenant')
+      .then((token) => { process.stdout.write(String(token)); })
+      .catch((err) => { process.stderr.write(String(err)); process.exit(1); });
+  `;
+
+  const { stdout, stderr, status } = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      NODE_OPTIONS: `--require="${preloadCopy}"`,
+      FAKE_AZ_LOG: logPath,
+    },
+  });
+
+  assert.equal(status, 0, `Process failed with stderr: ${stderr}`);
+  assert.equal(stdout, 'token-for:space-tenant');
 });
