@@ -255,11 +255,15 @@ function parseTrustedMicrosoftUrl(value, {
 }
 
 function validateDataverseEnvironmentUrl(value, purpose = 'Dataverse environment URL', options = {}) {
+  const allowLoopback = options.allowLoopback === true;
   return parseTrustedMicrosoftUrl(value, {
     purpose,
     allowPath: false,
-    allowedHost: isDataverseHost,
-    ...options
+    allowedHost: (hostname) => (
+      isDataverseHost(hostname)
+      || (allowLoopback && (hostname === '127.0.0.1' || hostname === 'localhost'))
+    ),
+    allowLoopback,
   }).origin;
 }
 

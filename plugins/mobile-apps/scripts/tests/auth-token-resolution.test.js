@@ -165,7 +165,7 @@ test('preload script loads correctly even if path contains spaces', (t) => {
   const spaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'space test-'));
   const preloadCopy = path.join(spaceDir, 'fake-az-preload.js');
   const preloadContent = fs.readFileSync(FAKE_AZ_PRELOAD, 'utf8')
-    .replace("path.join(__dirname, '../../lib/validation-helpers.js')", '"' + HELPERS.replace(/\\\\/g, '/') + '"');
+    .replace("path.join(__dirname, '../../lib/validation-helpers.js')", JSON.stringify(HELPERS));
   fs.writeFileSync(preloadCopy, preloadContent);
   t.after(() => fs.rmSync(spaceDir, { recursive: true, force: true }));
 

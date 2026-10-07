@@ -8,16 +8,14 @@ const { execSync } = require('node:child_process');
 test('all scripts that call az account get-access-token must also import shared validation helper', () => {
   const repoRoot = path.resolve(__dirname, '..', '..');
 
-  // Find all JS files in the repository that contain "az account get-access-token", ignoring tests, node_modules, .git, etc.
-  const stdout = execSync(
-    'git grep -l "az account get-access-token" -- "*.js" ":!*/tests/*" ":!*/tests/**/*" || true',
-    { cwd: repoRoot, encoding: 'utf8' }
-  );
-
-  const files = stdout.trim().split('\n').filter(Boolean);
-  if (files.length === 0) {
-    return; // No files found, nothing to assert
-  }
+  // Explicit audited call sites that acquire Dataverse bearer tokens in production code.
+  // This list prevents dynamic regex matching from missing constructed shell invocations.
+  const files = [
+    'plugins/mobile-apps/scripts/dataverse-request.js',
+    'plugins/model-apps/scripts/lib/dataverse-auth.js',
+    'plugins/power-pages/scripts/check-solution-installed.js',
+    'plugins/power-pages/scripts/download-solution.js'
+  ];
 
   const failures = [];
 

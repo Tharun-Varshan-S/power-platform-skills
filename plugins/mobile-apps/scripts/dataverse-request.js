@@ -162,7 +162,8 @@ function parseArgs() {
 }
 
 async function doRequest(envUrl, method, apiPath, body, token, includeHeaders, solution, options = {}) {
-  const url = validateDataverseApiPath(apiPath, envUrl, options);
+  const trustedEnvUrl = validateDataverseEnvironmentUrl(envUrl, 'Dataverse environment URL', options);
+  const url = validateDataverseApiPath(apiPath, trustedEnvUrl, options);
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
