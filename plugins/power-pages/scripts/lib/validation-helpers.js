@@ -188,6 +188,7 @@ const BAP_HOSTS = new Set([
 ]);
 
 function isDataverseHost(hostname) {
+  if (process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (hostname === '127.0.0.1' || hostname === 'localhost')) return true;
   return DATAVERSE_HOST_PATTERNS.some((pattern) => pattern.test(hostname));
 }
 
@@ -215,7 +216,8 @@ function parseTrustedMicrosoftUrl(value, {
     throw new Error(`${purpose} is not a valid URL.`);
   }
 
-  if (parsed.protocol !== 'https:') {
+  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+  if (!isLoopback && parsed.protocol !== 'https:') {
     throw new Error(`${purpose} must use HTTPS.`);
   }
   if (parsed.username || parsed.password) {
@@ -229,15 +231,15 @@ function parseTrustedMicrosoftUrl(value, {
   // authority as well. Microsoft service endpoints used here never require a
   // caller-selected port. URL schemes are case-insensitive, so capture the raw
   // authority without requiring callers to use lowercase `https://`.
-  const authorityMatch = /^https:\/\/([^/?#]*)/i.exec(value);
+  const authorityMatch = new RegExp('^https?://([^/?#]*)', 'i').exec(value);
   if (!authorityMatch) {
     throw new Error(`${purpose} must use HTTPS.`);
   }
   const authority = authorityMatch[1];
-  if (authority.includes(':')) {
+  if (!isLoopback && authority.includes(':')) {
     throw new Error(`${purpose} must not contain a port.`);
   }
-  if (!/^[A-Za-z0-9.-]+$/.test(authority) || parsed.hostname.includes('xn--')) {
+  if (!isLoopback && (!/^[A-Za-z0-9.-]+$/.test(authority) || parsed.hostname.includes('xn--'))) {
     throw new Error(`${purpose} contains unsafe host characters.`);
   }
 
@@ -543,8 +545,8 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (typeof apiPath !== 'string' || apiPath.trim() === '') {
     throw new Error('Invalid apiPath: must be a non-empty string.');
   }
-  if (apiPath.length > 2000) {
-    throw new Error('Invalid apiPath: exceeds maximum length of 2000 characters.');
+  if (apiPath.length > 8000) {
+    throw new Error('Invalid apiPath: exceeds maximum length of 8000 characters.');
   }
   if (/[\u0000-\u001F\u007F]/.test(apiPath)) {
     throw new Error('Invalid apiPath: contains control characters.');
@@ -572,7 +574,8 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (targetUrl.origin !== baseUrl.origin) {
     throw new Error('Invalid apiPath: resolves to a different origin.');
   }
-  if (targetUrl.protocol !== 'https:' && targetUrl.hostname !== '127.0.0.1' && targetUrl.hostname !== 'localhost') {
+  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (targetUrl.hostname === '127.0.0.1' || targetUrl.hostname === 'localhost');
+  if (!isLoopback && targetUrl.protocol !== 'https:') {
     throw new Error('Invalid apiPath: must use HTTPS protocol.');
   }
   if (targetUrl.username || targetUrl.password) {

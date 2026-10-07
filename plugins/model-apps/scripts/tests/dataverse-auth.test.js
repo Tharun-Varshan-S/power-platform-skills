@@ -1,4 +1,5 @@
 'use strict';
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

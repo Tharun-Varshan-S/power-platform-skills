@@ -283,6 +283,81 @@ const CLOUD_TO_SITE_DOMAIN = {
   'China': 'powerappsportals.cn',
 };
 
+const DATAVERSE_HOST_PATTERNS = [
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:api\.)?crm\d*\.dynamics\.com$/,
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:api\.)?crm\.microsoftdynamics\.us$/,
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:api\.)?crm\.appsplatform\.us$/,
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:api\.)?crm\.dynamics\.cn$/,
+];
+
+function isDataverseHost(hostname) {
+  if (process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (hostname === '127.0.0.1' || hostname === 'localhost')) return true;
+  return DATAVERSE_HOST_PATTERNS.some((pattern) => pattern.test(hostname));
+}
+
+function parseTrustedMicrosoftUrl(value, {
+  purpose = 'URL',
+  allowPath = true,
+  allowedHost = (hostname) => isDataverseHost(hostname),
+} = {}) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${purpose} must be a non-empty string.`);
+  }
+
+  if (/[\u0000-\u001f\u007f\\]/.test(value)) {
+    throw new Error(`${purpose} contains control characters or backslashes.`);
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${purpose} is not a valid URL.`);
+  }
+
+  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+  if (!isLoopback && parsed.protocol !== 'https:') {
+    throw new Error(`${purpose} must use HTTPS.`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${purpose} must not contain credentials.`);
+  }
+  if (parsed.hash) {
+    throw new Error(`${purpose} must not contain a fragment.`);
+  }
+
+  const authorityMatch = new RegExp('^https?://([^/?#]*)', 'i').exec(value);
+  if (!authorityMatch) {
+    throw new Error(`${purpose} must use HTTPS.`);
+  }
+  const authority = authorityMatch[1];
+  if (!isLoopback && authority.includes(':')) {
+    throw new Error(`${purpose} must not contain a port.`);
+  }
+  if (!isLoopback && (!/^[A-Za-z0-9.-]+$/.test(authority) || parsed.hostname.includes('xn--'))) {
+    throw new Error(`${purpose} contains unsafe host characters.`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (!allowedHost(hostname)) {
+    throw new Error(`${purpose} host "${hostname}" is not an allowed Microsoft Dataverse endpoint.`);
+  }
+  if (!allowPath && (parsed.pathname !== '/' || parsed.search)) {
+    throw new Error(`${purpose} must be an HTTPS origin without a path or query.`);
+  }
+
+  return parsed;
+}
+
+function validateDataverseEnvironmentUrl(value, purpose = 'Dataverse environment URL') {
+  return parseTrustedMicrosoftUrl(value, {
+    purpose,
+    allowPath: false,
+    allowedHost: isDataverseHost,
+  }).origin;
+}
+
+
 /**
  * Validates a Dataverse OData API path to prevent path traversal and origin changes.
  * Resolves the path against the base API URL and ensures it remains within scope.
@@ -324,7 +399,8 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (targetUrl.origin !== baseUrl.origin) {
     throw new Error('Invalid apiPath: resolves to a different origin.');
   }
-  if (targetUrl.protocol !== 'https:' && targetUrl.hostname !== '127.0.0.1' && targetUrl.hostname !== 'localhost') {
+  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (targetUrl.hostname === '127.0.0.1' || targetUrl.hostname === 'localhost');
+  if (!isLoopback && targetUrl.protocol !== 'https:') {
     throw new Error('Invalid apiPath: must use HTTPS protocol.');
   }
   if (targetUrl.username || targetUrl.password) {
@@ -359,4 +435,5 @@ module.exports = {
   CLOUD_TO_API,
   CLOUD_TO_SITE_DOMAIN,
   validateDataverseApiPath,
+  validateDataverseEnvironmentUrl,
 };

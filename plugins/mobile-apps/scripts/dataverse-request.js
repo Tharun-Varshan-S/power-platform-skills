@@ -54,7 +54,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { getAuthToken, makeRequest, validateDataverseApiPath } = require('./lib/validation-helpers');
+const { getAuthToken, makeRequest, validateDataverseApiPath, validateDataverseEnvironmentUrl } = require('./lib/validation-helpers');
 
 const READ_REQUEST_TIMEOUT_MS = 30000;
 const MUTATION_REQUEST_TIMEOUT_MS = 120000;
@@ -215,19 +215,8 @@ function createDataverseRequestExecutor({
   // Validate the environment URL origin before any token is acquired.
   // Without this check, a caller who passes https://attacker.example becomes the
   // "trusted" base and every request sends the bearer token to that host.
-  // We allow the HTTP loopback (127.0.0.1 / localhost) as an explicit test exception,
-  // matching the same rule applied inside validateDataverseApiPath.
   try {
-    const parsed = new URL(envUrl);
-    const isLoopback = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
-    if (!isLoopback && parsed.protocol !== 'https:') {
-      throw new Error('environmentUrl must use HTTPS.');
-    }
-    // Reject path/query-bearing URLs — they would silently be trimmed to their origin by
-    // validateDataverseApiPath and the caller would never notice the mismatch.
-    if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
-      throw new Error('environmentUrl must be a bare origin (no path, query, or fragment).');
-    }
+    validateDataverseEnvironmentUrl(envUrl);
   } catch (err) {
     throw new Error(`Invalid environmentUrl: ${err.message}`);
   }

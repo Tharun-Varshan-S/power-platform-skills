@@ -1,3 +1,5 @@
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
+
 const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
 const crypto = require('node:crypto');

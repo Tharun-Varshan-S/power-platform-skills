@@ -1,6 +1,8 @@
 'use strict';
 
 const test = require('node:test');
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
+
 const assert = require('node:assert/strict');
 
 const { parseArgs, doRequest } = require('../dataverse-request');

@@ -386,5 +386,5 @@ test('validateDataverseApiPath rejects path traversal and out-of-scope paths', (
   assert.throws(() => validateDataverseApiPath(null, base), /non-empty string/);
   assert.throws(() => validateDataverseApiPath(undefined, base), /non-empty string/);
   assert.throws(() => validateDataverseApiPath([], base), /non-empty string/);
-  assert.throws(() => validateDataverseApiPath('a'.repeat(2001), base), /maximum length/);
+  assert.throws(() => validateDataverseApiPath('a'.repeat(8001), base), /maximum length/);
 });

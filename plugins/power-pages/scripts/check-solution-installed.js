@@ -17,8 +17,8 @@
 // The query itself lives in lib/check-solution-installed.js so it can be unit-
 // tested without spawning a subprocess or making real network calls.
 
-const { getAuthToken, getEnvironmentUrl } = require('./lib/validation-helpers');
-const { checkSolutionInstalled, sanitizeEnvUrl } = require('./lib/check-solution-installed');
+const { getAuthToken, getEnvironmentUrl, validateDataverseEnvironmentUrl } = require('./lib/validation-helpers');
+const { checkSolutionInstalled } = require('./lib/check-solution-installed');
 
 function parseArgs(argv) {
   const args = {};
@@ -49,7 +49,7 @@ async function main() {
   // so a `--envUrl 'x"; rm -rf ~; echo "'` can't escape the quotes.
   let envUrl;
   try {
-    envUrl = sanitizeEnvUrl(rawEnvUrl);
+    envUrl = validateDataverseEnvironmentUrl(rawEnvUrl);
   } catch (err) {
     process.stderr.write(`${err.message}\n`);
     process.exit(1);

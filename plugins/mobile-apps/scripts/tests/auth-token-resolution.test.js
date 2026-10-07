@@ -16,6 +16,8 @@
 // ECONNREFUSED instead of touching the network.
 
 const test = require('node:test');
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');

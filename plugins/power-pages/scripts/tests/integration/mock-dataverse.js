@@ -1,4 +1,5 @@
 'use strict';
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
 
 // Minimal HTTP mock for Dataverse OData responses used by integration tests.
 //

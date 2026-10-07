@@ -1,8 +1,12 @@
 'use strict';
 const test = require('node:test');
+process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
+
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 const helpersPath = path.join(__dirname, '..', 'lib', 'validation-helpers.js');
+
 
 test('validateDataverseApiPath accepts valid Dataverse API paths', () => {
   const { validateDataverseApiPath } = require(helpersPath);
