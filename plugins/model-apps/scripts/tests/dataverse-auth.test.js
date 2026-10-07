@@ -1,10 +1,26 @@
 'use strict';
-process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const path = require('node:path');
 
-const { parseArgs, readJsonArg, label, requiredLevel } = require('../lib/dataverse-auth');
+// Mock validation helpers to allow loopback in tests before importing dataverse-auth
+const helpersPath = path.resolve(__dirname, '../lib/dataverse-auth');
+const helpers = require(helpersPath);
+if (helpers.validateDataverseEnvironmentUrl) {
+  const origEnv = helpers.validateDataverseEnvironmentUrl;
+  helpers.validateDataverseEnvironmentUrl = (val, purp) => origEnv(val, purp, { allowLoopback: true });
+}
+if (helpers.validateDataverseApiPath) {
+  const origPath = helpers.validateDataverseApiPath;
+  helpers.validateDataverseApiPath = (apiPath, envUrl) => origPath(apiPath, envUrl, { allowLoopback: true });
+}
+if (helpers.dataverseOrigin) {
+  const origOrigin = helpers.dataverseOrigin;
+  helpers.dataverseOrigin = (val) => origOrigin(val, { allowLoopback: true });
+}
+
+const { parseArgs, readJsonArg, label, requiredLevel } = helpers;
 
 test('parseArgs: positional only', () => {
   const { positional, flags } = parseArgs(['a', 'b', 'c']);

@@ -16,13 +16,24 @@
 // ECONNREFUSED instead of touching the network.
 
 const test = require('node:test');
-process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
+// Mock validation helpers to allow loopback in tests before importing dataverse-request
+const helpersPath = path.resolve(__dirname, '../lib/validation-helpers');
+const helpers = require(helpersPath);
+if (helpers.validateDataverseEnvironmentUrl) {
+  const origEnv = helpers.validateDataverseEnvironmentUrl;
+  helpers.validateDataverseEnvironmentUrl = (val, purp) => origEnv(val, purp, { allowLoopback: true });
+}
+if (helpers.validateDataverseApiPath) {
+  const origPath = helpers.validateDataverseApiPath;
+  helpers.validateDataverseApiPath = (apiPath, envUrl) => origPath(apiPath, envUrl, { allowLoopback: true });
+}
 
 const HELPERS = path.join(__dirname, '..', 'lib', 'validation-helpers.js');
 const FAKE_AZ_PRELOAD = path.join(__dirname, 'helpers', 'fake-az-preload.js');
@@ -42,6 +53,12 @@ function makeFakeAzLog(t) {
   return path.join(dir, 'az.log');
 }
 
+function nodeRequireOption(filePath) {
+  // NODE_OPTIONS tokenization treats Windows backslashes as escapes. Forward
+  // slashes remain valid in absolute Windows paths and survive on all runners.
+  return `--require "${filePath.replace(/\\/g, '/').replace(/"/g, '\\"')}"`;
+}
+
 // Runs getAuthToken in a child process so preload/env manipulation cannot leak
 // into the test runner, and returns both the token and the az invocation log.
 function runGetAuthToken(t, env = {}, explicitTenantId = null) {
@@ -57,7 +74,7 @@ function runGetAuthToken(t, env = {}, explicitTenantId = null) {
     encoding: 'utf8',
     env: {
       ...process.env,
-      NODE_OPTIONS: `--require="${FAKE_AZ_PRELOAD}"`,
+      NODE_OPTIONS: nodeRequireOption(FAKE_AZ_PRELOAD),
       FAKE_AZ_LOG: logPath,
       // Cleared unless a test opts in — the ambient shell may have them set.
       POWER_PLATFORM_TENANT_ID: '',
@@ -147,7 +164,9 @@ test('final fallback mints an unqualified token when no tenant resolves', (t) =>
 test('preload script loads correctly even if path contains spaces', (t) => {
   const spaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'space test-'));
   const preloadCopy = path.join(spaceDir, 'fake-az-preload.js');
-  fs.copyFileSync(FAKE_AZ_PRELOAD, preloadCopy);
+  const preloadContent = fs.readFileSync(FAKE_AZ_PRELOAD, 'utf8')
+    .replace("path.join(__dirname, '../../lib/validation-helpers.js')", '"' + HELPERS.replace(/\\\\/g, '/') + '"');
+  fs.writeFileSync(preloadCopy, preloadContent);
   t.after(() => fs.rmSync(spaceDir, { recursive: true, force: true }));
 
   const logPath = makeFakeAzLog(t);
@@ -162,7 +181,7 @@ test('preload script loads correctly even if path contains spaces', (t) => {
     encoding: 'utf8',
     env: {
       ...process.env,
-      NODE_OPTIONS: `--require="${preloadCopy}"`,
+      NODE_OPTIONS: nodeRequireOption(preloadCopy),
       FAKE_AZ_LOG: logPath,
     },
   });

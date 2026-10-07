@@ -188,7 +188,6 @@ const BAP_HOSTS = new Set([
 ]);
 
 function isDataverseHost(hostname) {
-  if (process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (hostname === '127.0.0.1' || hostname === 'localhost')) return true;
   return DATAVERSE_HOST_PATTERNS.some((pattern) => pattern.test(hostname));
 }
 
@@ -196,6 +195,7 @@ function parseTrustedMicrosoftUrl(value, {
   purpose = 'URL',
   allowPath = true,
   allowedHost = (hostname) => isDataverseHost(hostname) || POWER_PLATFORM_SERVICE_HOSTS.has(hostname),
+  allowLoopback = false,
 } = {}) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${purpose} must be a non-empty string.`);
@@ -216,7 +216,7 @@ function parseTrustedMicrosoftUrl(value, {
     throw new Error(`${purpose} is not a valid URL.`);
   }
 
-  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+  const isLoopback = allowLoopback === true && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
   if (!isLoopback && parsed.protocol !== 'https:') {
     throw new Error(`${purpose} must use HTTPS.`);
   }
@@ -254,11 +254,12 @@ function parseTrustedMicrosoftUrl(value, {
   return parsed;
 }
 
-function validateDataverseEnvironmentUrl(value, purpose = 'Dataverse environment URL') {
+function validateDataverseEnvironmentUrl(value, purpose = 'Dataverse environment URL', options = {}) {
   return parseTrustedMicrosoftUrl(value, {
     purpose,
     allowPath: false,
     allowedHost: isDataverseHost,
+    ...options
   }).origin;
 }
 
@@ -541,7 +542,7 @@ const CLOUD_TO_SITE_DOMAIN = {
  * @param {string} trustedEnvUrl - The validated environment URL
  * @returns {string} The fully resolved and validated HTTPS URL
  */
-function validateDataverseApiPath(apiPath, trustedEnvUrl) {
+function validateDataverseApiPath(apiPath, trustedEnvUrl, options = {}) {
   if (typeof apiPath !== 'string' || apiPath.trim() === '') {
     throw new Error('Invalid apiPath: must be a non-empty string.');
   }
@@ -574,7 +575,7 @@ function validateDataverseApiPath(apiPath, trustedEnvUrl) {
   if (targetUrl.origin !== baseUrl.origin) {
     throw new Error('Invalid apiPath: resolves to a different origin.');
   }
-  const isLoopback = process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN === '1' && (targetUrl.hostname === '127.0.0.1' || targetUrl.hostname === 'localhost');
+  const isLoopback = options.allowLoopback === true && (targetUrl.hostname === '127.0.0.1' || targetUrl.hostname === 'localhost');
   if (!isLoopback && targetUrl.protocol !== 'https:') {
     throw new Error('Invalid apiPath: must use HTTPS protocol.');
   }

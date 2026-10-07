@@ -161,8 +161,8 @@ function parseArgs() {
   };
 }
 
-async function doRequest(envUrl, method, apiPath, body, token, includeHeaders, solution) {
-  const url = validateDataverseApiPath(apiPath, envUrl);
+async function doRequest(envUrl, method, apiPath, body, token, includeHeaders, solution, options = {}) {
+  const url = validateDataverseApiPath(apiPath, envUrl, options);
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
@@ -208,6 +208,9 @@ function createDataverseRequestExecutor({
   getToken = getAuthToken,
   sendRequest = doRequest,
   sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+  validateEnvUrl = validateDataverseEnvironmentUrl,
+  validateApiPath = validateDataverseApiPath,
+  options = {},
 }) {
   const envUrl = String(environmentUrl || '').replace(/\/+$/, '');
   if (!envUrl) throw new Error('environmentUrl is required');
@@ -216,7 +219,7 @@ function createDataverseRequestExecutor({
   // Without this check, a caller who passes https://attacker.example becomes the
   // "trusted" base and every request sends the bearer token to that host.
   try {
-    validateDataverseEnvironmentUrl(envUrl);
+    validateEnvUrl(envUrl, 'Dataverse environment URL', options);
   } catch (err) {
     throw new Error(`Invalid environmentUrl: ${err.message}`);
   }
@@ -228,7 +231,7 @@ function createDataverseRequestExecutor({
   async function ensureToken() {
     if (token) return token;
     if (!tokenPromise) {
-      tokenPromise = Promise.resolve(getToken(envUrl, tenantId));
+      tokenPromise = Promise.resolve(getToken(envUrl, tenantId, options));
     }
     const pendingToken = tokenPromise;
     try {

@@ -1,6 +1,5 @@
 'use strict';
 const test = require('node:test');
-process.env.POWER_PLATFORM_SKILLS_TEST_LOOPBACK_ORIGIN = '1';
 
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -28,7 +27,7 @@ test('validateDataverseApiPath accepts valid Dataverse API paths', () => {
 test('validateDataverseApiPath accepts localhost http', () => {
   const { validateDataverseApiPath } = require(helpersPath);
   const base = 'http://127.0.0.1:40057';
-  assert.equal(validateDataverseApiPath('accounts', base), `${base}/api/data/v9.2/accounts`);
+  assert.equal(validateDataverseApiPath('accounts', base, { allowLoopback: true }), `${base}/api/data/v9.2/accounts`);
 });
 
 test('validateDataverseApiPath rejects path traversal and out-of-scope paths', () => {
