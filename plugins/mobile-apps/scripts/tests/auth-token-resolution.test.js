@@ -165,6 +165,6 @@ test('preload script loads correctly even if path contains spaces', (t) => {
     },
   });
 
-  assert.equal(status, 0, `Process failed with stderr: ${stderr}`);
+  assert.equal(status, 0, 'Process failed with stderr: ' + stderr);
   assert.equal(stdout, 'token-for:space-tenant');
 });
