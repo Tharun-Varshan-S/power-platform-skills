@@ -30,6 +30,14 @@ test('validateDataverseApiPath accepts localhost http', () => {
   assert.equal(validateDataverseApiPath('accounts', base, { allowLoopback: true }), `${base}/api/data/v9.2/accounts`);
 });
 
+
+
+test('validateDataverseEnvironmentUrl accepts localhost http when allowLoopback is true', () => {
+  const { validateDataverseEnvironmentUrl } = require(helpersPath);
+  const base = 'http://127.0.0.1:40057';
+  assert.equal(validateDataverseEnvironmentUrl(base, 'test', { allowLoopback: true }), base);
+});
+
 test('validateDataverseApiPath rejects path traversal and out-of-scope paths', () => {
   const { validateDataverseApiPath } = require(helpersPath);
   const base = 'https://org.crm.dynamics.com';

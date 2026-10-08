@@ -4,23 +4,9 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const path = require('node:path');
 
-// Mock validation helpers to allow loopback in tests before importing dataverse-auth
-const helpersPath = path.resolve(__dirname, '../lib/dataverse-auth');
-const helpers = require(helpersPath);
-if (helpers.validateDataverseEnvironmentUrl) {
-  const origEnv = helpers.validateDataverseEnvironmentUrl;
-  helpers.validateDataverseEnvironmentUrl = (val, purp) => origEnv(val, purp, { allowLoopback: true });
-}
-if (helpers.validateDataverseApiPath) {
-  const origPath = helpers.validateDataverseApiPath;
-  helpers.validateDataverseApiPath = (apiPath, envUrl) => origPath(apiPath, envUrl, { allowLoopback: true });
-}
-if (helpers.dataverseOrigin) {
-  const origOrigin = helpers.dataverseOrigin;
-  helpers.dataverseOrigin = (val) => origOrigin(val, { allowLoopback: true });
-}
+// Mock validation helpers were removed as per review feedback.
 
-const { parseArgs, readJsonArg, label, requiredLevel } = helpers;
+const { parseArgs, readJsonArg, label, requiredLevel } = require('../lib/dataverse-auth');
 
 test('parseArgs: positional only', () => {
   const { positional, flags } = parseArgs(['a', 'b', 'c']);
@@ -783,6 +769,18 @@ test('dataverseOrigin refuses anything that is not exactly an https Dataverse or
   }
 });
 
+test('dataverseOrigin accepts localhost http when allowLoopback is true', () => {
+  const { dataverseOrigin } = require('../lib/dataverse-auth.js');
+  const base = 'http://127.0.0.1';
+  assert.equal(dataverseOrigin(base, { allowLoopback: true }), base);
+});
+
+test('validateDataverseEnvironmentUrl accepts localhost http when allowLoopback is true', () => {
+  const { validateDataverseEnvironmentUrl } = require('../lib/dataverse-auth.js');
+  const base = 'http://127.0.0.1:40057';
+  assert.equal(validateDataverseEnvironmentUrl(base, 'test', { allowLoopback: true }), base);
+});
+
 test('a non-origin environment URL starts no Azure CLI process and sends no request', async () => {
   const { getAuthToken, getAuthTokenAsync, dataverseRequest } = require('../lib/dataverse-auth.js');
   let started = 0;
@@ -880,7 +878,7 @@ test('validateDataverseApiPath accepts valid Dataverse API paths', () => {
 test('validateDataverseApiPath accepts localhost http', () => {
   const { validateDataverseApiPath } = require('../lib/dataverse-auth.js');
   const base = 'http://127.0.0.1:40057';
-  assert.equal(validateDataverseApiPath('accounts', base), `${base}/api/data/v9.2/accounts`);
+  assert.equal(validateDataverseApiPath('accounts', base, { allowLoopback: true }), `${base}/api/data/v9.2/accounts`);
 });
 
 test('validateDataverseApiPath rejects path traversal and out-of-scope paths', () => {

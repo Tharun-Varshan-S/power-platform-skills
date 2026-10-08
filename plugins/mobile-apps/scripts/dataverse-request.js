@@ -251,7 +251,7 @@ function createDataverseRequestExecutor({
       return token;
     }
     if (!refreshPromise) {
-      refreshPromise = Promise.resolve(getToken(envUrl, tenantId))
+      refreshPromise = Promise.resolve(getToken(envUrl, tenantId, options))
         .then((refreshed) => {
           if (refreshed) token = refreshed;
           return refreshed;
@@ -278,7 +278,7 @@ function createDataverseRequestExecutor({
       includeHeaders,
       solution,
       tenantId,
-      async (_environmentUrl, _tenantId, staleToken) => refreshToken(staleToken),
+      async (_environmentUrl, _tenantId, _opts, staleToken) => refreshToken(staleToken),
       sendRequest,
       {
         sleep,
@@ -291,6 +291,7 @@ function createDataverseRequestExecutor({
             }
           }
         },
+        options,
       },
     );
     return {
@@ -1063,6 +1064,7 @@ async function runOneMetadataOperation(
   {
     sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
     onRateLimited = () => {},
+    options = {},
   } = {},
 ) {
   let token = initialToken;
@@ -1072,7 +1074,7 @@ async function runOneMetadataOperation(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Response headers are always needed internally for Retry-After handling.
     // The caller-facing result still honors includeHeaders below.
-    const res = await sendRequest(envUrl, method, apiPath, body, token, true, solution);
+    const res = await sendRequest(envUrl, method, apiPath, body, token, true, solution, options);
     if (res.error) {
       if (isMutationMethod(method)) {
         return {
@@ -1090,7 +1092,7 @@ async function runOneMetadataOperation(
     }
 
     if (res.statusCode === 401 && attempt < maxRetries) {
-      const refreshed = await getToken(envUrl, tenantId, token);
+      const refreshed = await getToken(envUrl, tenantId, options, token);
       if (!refreshed) {
         return { status: 401, error: 'Token refresh failed', token, rateLimited };
       }
