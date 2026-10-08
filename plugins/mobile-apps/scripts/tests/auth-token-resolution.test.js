@@ -23,17 +23,6 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-// Mock validation helpers to allow loopback in tests before importing dataverse-request
-const helpersPath = path.resolve(__dirname, '../lib/validation-helpers');
-const helpers = require(helpersPath);
-if (helpers.validateDataverseEnvironmentUrl) {
-  const origEnv = helpers.validateDataverseEnvironmentUrl;
-  helpers.validateDataverseEnvironmentUrl = (val, purp) => origEnv(val, purp, { allowLoopback: true });
-}
-if (helpers.validateDataverseApiPath) {
-  const origPath = helpers.validateDataverseApiPath;
-  helpers.validateDataverseApiPath = (apiPath, envUrl) => origPath(apiPath, envUrl, { allowLoopback: true });
-}
 
 const HELPERS = path.join(__dirname, '..', 'lib', 'validation-helpers.js');
 const FAKE_AZ_PRELOAD = path.join(__dirname, 'helpers', 'fake-az-preload.js');
@@ -65,7 +54,7 @@ function runGetAuthToken(t, env = {}, explicitTenantId = null) {
   const logPath = makeFakeAzLog(t);
   const script = `
     const { getAuthToken } = require(${JSON.stringify(HELPERS)});
-    getAuthToken(${JSON.stringify(UNREACHABLE_ENV_URL)}, ${JSON.stringify(explicitTenantId)})
+    getAuthToken(${JSON.stringify(UNREACHABLE_ENV_URL)}, ${JSON.stringify(explicitTenantId)}, { allowLoopback: true })
       .then((token) => { process.stdout.write(String(token)); })
       .catch((error) => { process.stderr.write(String(error)); process.exit(1); });
   `;

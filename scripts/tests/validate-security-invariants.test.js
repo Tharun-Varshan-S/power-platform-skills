@@ -13,7 +13,7 @@ test('all scripts that call az account get-access-token must also import shared 
   const files = [
     'plugins/mobile-apps/scripts/dataverse-request.js',
     'plugins/model-apps/scripts/lib/dataverse-auth.js',
-    'plugins/power-pages/scripts/check-solution-installed.js'
+    'plugins/power-pages/scripts/dataverse-request.js'
   ];
 
   const failures = [];
@@ -22,17 +22,16 @@ test('all scripts that call az account get-access-token must also import shared 
     const fullPath = path.join(repoRoot, file);
     const content = fs.readFileSync(fullPath, 'utf8');
 
-    // It must either be the validation helper itself or require it.
-    // The validation helpers define or require `validateDataverseEnvironmentUrl` (or dataverseOrigin for model-apps).
-    // Let's check if the file references 'validateDataverseEnvironmentUrl', 'validateDataverseApiPath', 'dataverseOrigin', or 'requireDataverseOrigin'.
-    
     // We check that the file enforces origin checks.
     const hasSharedValidator = 
       content.includes('validateDataverseEnvironmentUrl') ||
       content.includes('dataverseOrigin') ||
       content.includes('requireDataverseOrigin');
+      
+    // Enforce the API-path invariant
+    const hasPathValidator = content.includes('validateDataverseApiPath');
 
-    if (!hasSharedValidator) {
+    if (!hasSharedValidator || !hasPathValidator) {
       failures.push(file);
     }
   }
