@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process');
 const {
   getTrackedSkillFromToolInput,
   getValidatorScript,
+  getBlockingSpawnStatus,
   isAlmPlanSkill,
 } = require('../scripts/lib/powerpages-hook-utils');
 const { planDataPath } = require('../scripts/lib/alm-paths');
@@ -51,7 +52,13 @@ process.stdin.on('end', () => {
       });
       if (result.stdout) process.stdout.write(result.stdout);
       if (result.stderr) process.stderr.write(result.stderr);
-      validatorStatus = result.status ?? 0;
+      validatorStatus = getBlockingSpawnStatus(result);
+      if (result.error || result.signal) {
+        process.stderr.write(
+          `[power-pages] Skill validator did not complete: ` +
+          `${result.error?.message || `signal ${result.signal}`}.\n`
+        );
+      }
       debug(`[power-pages hook] Validator exited with code ${validatorStatus}\n`);
     }
 

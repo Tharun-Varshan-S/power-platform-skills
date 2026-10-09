@@ -17,6 +17,7 @@ Read `PLUGIN_DEVELOPMENT_GUIDE.md` for UX and reliability standards when creatin
 - **Dataverse-backed validation** must stay opt-in for local runs only. Do not require live Dataverse connectivity in CI workflows or default test runs; gate it behind explicit local flags such as `--validate-dataverse-relationships`.
 - **Azure CLI `--allow-no-subscriptions`** — this flag is only valid on `az login`. Other `az` subcommands (`az account get-access-token`, `az account show`, etc.) reject it as an unrecognized argument and exit 2, so do NOT add it to anything other than `az login`. When the user is not logged in to the Azure CLI, suggest plain `az login` first; only suggest `az login --allow-no-subscriptions` as a fallback if they don't have any associated Azure subscription, since that variant lets subscription-less accounts sign in and still mint AAD-scoped Dataverse/Power Platform tokens via subsequent `az account get-access-token` calls. Reuse the shared `getAuthToken` helper in `scripts/lib/validation-helpers.js` instead of shelling out to `az` directly.
 - **Reference docs** shared across skills live in `references/` — reference via `${PLUGIN_ROOT}/references/` paths, don't duplicate.
+- **Bidirectional by default** — All generated sites must follow `references/bidirectional-design.md`: resolve direction from the locale's writing script, prefer CSS logical properties, isolate mixed-direction content, use script-capable font profiles, and classify directional assets instead of mirroring everything. Intentional physical CSS requires an adjacent `/* bidi-physical: <specific reason>; verify=ltr,rtl */` directive. Run `scripts/audit-bidirectional-readiness.js` for deterministic readiness findings.
 - **Local scaffold templates** use `__PLACEHOLDER__` tokens (e.g., `__SITE_NAME__`) replaced during from-scratch scaffolding. The `gitignore` file is stored without the dot prefix and renamed to `.gitignore` during scaffolding.
 - **Batch browser work into one script call** - every tool call re-sends the whole conversation, and each Playwright MCP `browser_navigate` also returns a full page snapshot, so per-page MCP calls multiply cost and trigger context compactions. `create-site` captures every route at both widths with one `capture-design-review.js` call and opens the screenshots in one turn; prefer that pattern whenever a skill needs the same browser work across several pages. Keep the design review inline rather than in a subagent: a fresh context re-loads every screenshot, which raises cost without improving the review.
 - **Browser review scripts** (`capture-design-review.js`, `axe-audit.js`) share their boundaries through `scripts/lib`, so add new browser work there rather than beside them:
@@ -25,7 +26,8 @@ Read `PLUGIN_DEVELOPMENT_GUIDE.md` for UX and reliability standards when creatin
   - *Output* - URLs in results and errors are cut to origin and path (`redactUrl`, `redactUrlsInText`), and screenshots go to a private temp directory (`private-temp-dir.js`).
   - *Navigation* - `gotoSettled` completes at `load` with a best-effort network-idle wait, because `networkidle` never arrives on sites that long-poll or send frequent beacons.
 - **Playwright screenshots** go to a private per-launch temp directory: `scripts/launch-playwright-mcp.js` passes `--output-dir` (unless `PLAYWRIGHT_MCP_OUTPUT_DIR` is set), falls back to a private `~/.cache/power-pages` directory and otherwise fails closed rather than writing into the project, removes the directory on server exit or a host termination signal, and on each launch sweeps this user's launcher directories untouched for an hour, because hosts such as Copilot CLI SIGKILL the launcher before any in-process cleanup can run. Skills that call `browser_take_screenshot` leave `filename` unset so output never lands in the user's project.
-- **Hooks** are defined centrally in `hooks/hooks.json`, using `PostToolUse` with matcher `Skill` so validation runs when a tracked Power Pages skill completes.
+- **Preserve site integrity after creation** — Any skill or agent that changes visible SPA source must follow `references/site-modification-integrity.md`: synchronize new semantic keys across configured locale resources, preserve unavailable-locale boundaries, use direction-neutral UI, and design for text expansion. Every source-mutating skill must run `scripts/validate-site-integrity.js` as an explicit final phase after implementation and its normal validator/build. Deployment runs it again as the backstop for manual edits.
+- **Hooks are defined centrally** — Keep plugin hooks in `hooks/hooks.json`. `PostToolUse` with matcher `Skill` fires after the skill instructions load, before the agent implements them, so it does not mark workflow completion. Keep skill-specific artifact validation and ALM reconciliation in the centralized hook where applicable, but never use that hook as post-implementation site-integrity enforcement.
 - **ALM split-decision thresholds** are intentionally tighter than the platform hard caps. `scripts/lib/alm-thresholds.js` recommends a split at 75 MB / 4000 components (vs platform caps of 95 MB / 6000), reserving ~20 MB / ~2000-component growth headroom in each split child. Override per-project via `.alm-config.json` if you have a justified reason to push closer to the caps.
 - **OAuth credential-style site settings** (ConsumerKey / ClientId / ClientSecret / etc.) are NOT excluded from solutions. `setup-solution` Phase 5 prompts per credential to choose between (a) Secret-typed env var (Key Vault per stage), (b) String-typed env var (plain text per stage), or (c) skip. The site-setting record is added to the solution and routed to an env var so secret values never ship in the solution zip. Plans generated before 2026-05-08 use the older `excluded` bucket — setup-solution's preloadedSettings handler treats those as `credentialNeedsDecision` for backward compatibility.
 - **MCP Learn grounding for ALM skills** — solution and pipeline skills (`setup-solution`, `export-solution`, `import-solution`, `diagnose-deployment`, `setup-pipeline`, `deploy-pipeline`, `ensure-pipelines-host`, `force-link-environment`) include a Phase 1.5 step that grounds the agent in current Microsoft Learn ALM docs before proceeding. The shared discovery pattern lives in `references/alm-docs-grounding.md`. Add the same Phase 1.5 + the two `mcp__plugin_power-pages_microsoft-learn__microsoft_docs_search/fetch` tools to `allowed-tools` when introducing a new ALM skill.
@@ -47,6 +49,8 @@ agents/
 scripts/
   generate-uuid.js             ← Shared UUID v4 generator (used by multiple skills)
   detect-framework.js          ← Reports explicit-project framework evidence without guessing ambiguous projects
+  audit-bidirectional-readiness.js ← Audits generated source for deterministic bidirectional blockers and review findings
+  validate-site-integrity.js ← Shared post-modification/deployment localization and bidirectional integrity check
   validate-i18n-package.js      ← Validates npm localization package compatibility, stability, maintenance, mode, docs, and license
   check-activation-status.js   ← Checks if site is already activated (used by deploy-site, activate-site)
   poll-async-operation.js      ← Polls Dataverse asyncoperations until terminal state (used by export-solution, import-solution)
@@ -57,6 +61,8 @@ scripts/
 references/                    ← Shared reference docs used by multiple skills
   odata-common.md              ← Auth headers, token refresh, error handling, retry patterns
   bcp47-subtags.json           ← Bundled IANA Language Subtag Registry snapshot
+  bidirectional-design.md      ← Shared LTR/RTL design, typography, content, component, coordinator, and testing standard
+  site-modification-integrity.md ← Shared lifecycle contract for localized, direction-safe, expansion-safe site edits
   i18n-frameworks.md           ← Framework localization modes, packages, resources, selector behavior, and manifest schema
   dataverse-prerequisites.md   ← PAC CLI check, Azure CLI token, API access verification
   framework-conventions.md     ← Framework detection, paths, route discovery
@@ -71,7 +77,7 @@ skills/
   create-site/
     SKILL.md                   ← Skill definition with frontmatter (model, allowed-tools)
     assets/{react,vue,angular,astro}/  ← Framework templates with __PLACEHOLDER__ tokens
-    scripts/validate-site.js   ← Node script validating generated sites
+    scripts/validate-site.js   ← Validates generated sites, root locale direction, and deterministic bidirectional blockers
   exceptional-web-design/
     SKILL.md                   ← Read-only design review of an existing site (URL or folder) against the shared design references
   deploy-site/
@@ -88,7 +94,7 @@ skills/
     scripts/validate-seo.js    ← Node script validating SEO assets (robots.txt, sitemap.xml, meta tags)
   add-localization/
     SKILL.md                   ← SPA localization workflow for React, Vue, Angular, and Astro
-    scripts/validate-localization.js ← Validates manifest, locales, resources, tokens, selector, lang, and dir
+    scripts/validate-localization.js ← Validates manifest, resources, selectors, lang/dir, opposite-direction readiness, and runtime coordinators
   activate-site/
     SKILL.md                   ← Site activation/provisioning skill definition
     scripts/activate-site.js   ← Activates a site via PP API + polls status
