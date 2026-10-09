@@ -27,6 +27,7 @@ Guide the user through creating a complete, production-quality Power Pages code 
 - **Keep the scaffold loader in sync with reality**: The scaffold loader polls `public/scaffold-status.json`. Update this file before every `AskUserQuestion` (to raise the "waiting for your input" banner so the user doesn't miss a terminal prompt) and before each implementation step in Phase 5 (so the progress-bar label matches what you're actually doing while the decorative spinner continues its default cycle). See [Live Preview Status Protocol](#live-preview-status-protocol).
 - **Use purposeful visuals**: Every image explains, orients, demonstrates, or reinforces identity. Prefer the site's own UI composed as a product moment, then bespoke inline SVG, then specific Unsplash photography with one art direction (see [5.3](#53-source-purposeful-visuals)). Never leave image placeholders or broken `<img>` tags pointing to nonexistent files.
 - **Git checkpoints**: Commit after every individual page and component — each gets its own commit so breaking changes can be reverted.
+- **Site content language is independent of Dataverse language**: Generate every user-visible SPA string in the approved content language. Dataverse and Power Pages platform-managed messages remain English (`en-US`, LCID `1033`) in this workflow.
 
 **Constraint**: Only static SPA frameworks are supported (React, Vue, Angular, Astro). NOT supported: Next.js, Nuxt.js, Remix, SvelteKit, Liquid.
 
@@ -97,8 +98,8 @@ Write the file with the `Write` tool (atomic overwrite). You do not need to read
 
 4. From the user's answers, derive:
    - `__SITE_NAME__` (Title Case, e.g., `Contoso Portal`)
-   - `__SITE_SLUG__` (kebab-case derived from site name, e.g., `contoso-portal`)
-   - `__SITE_DESCRIPTION__` (one-line description based on name + purpose)
+   - A preliminary `__SITE_SLUG__` (lowercase ASCII kebab-case derived from
+     the site name when possible)
 5. Summarize the path-agnostic understanding and confirm with user before proceeding:
    - Site name
    - Site purpose/type
@@ -111,7 +112,7 @@ Write the file with the `Write` tool (atomic overwrite). You do not need to read
 - **Internal**: Prioritize task completion - status, the next action, data tables, dashboards, authentication, navigation depth. The wow comes from clarity, density done right, and polish in the details rather than marketing heroes.
 - **External**: Prioritize a striking first impression, a persuasive page narrative with proof at the point of doubt, SEO-friendly structure, and contact forms.
 
-**Output**: Clear statement of site purpose, audience, and derived naming values.
+**Output**: Clear statement of site purpose, audience, site name, and preliminary technical slug.
 
 ---
 
@@ -642,7 +643,53 @@ Write the file with the `Write` tool (atomic overwrite). You do not need to read
        - **No, finish here**: mark **Select template or choose from-scratch** as `completed`, then stop.
        - **Yes, customize now**: append the template customization tasks (see [Progress Tracking](#progress-tracking)), then continue below.
 
-   20. Mark **Plan template customizations** as `in_progress`, then ask what the user wants changed in `PROJECT_ROOT`. Use the existing Phase 3/4/5/6/7 implementation, verification, and review flow against the cloned project; do **not** run Phase 2 scaffold/copy-template. In Phase 3, skip the Brand sub-prompt and set `BRAND_SOURCE` to `template` - the template's existing theme tokens are the source of truth unless the user asks for a redesign. On this path Phase 5 edits the cloned project in place: keep the existing theme file, layout, and pages, change only what the approved plan names, and skip every `scaffold-status.json` step (no loader is running). Run the Phase 5.7 design critique on the pages you changed.
+   20. Mark **Plan template customizations** as `in_progress`, then inspect the
+       cloned project before asking what the user wants changed:
+
+       ```bash
+       node "${PLUGIN_ROOT}/scripts/lib/localization-config.js" inspect --projectRoot "<PROJECT_ROOT>"
+       ```
+
+       Establish the language context required by the Phase 4 plan in this order:
+       - When `localization.detected=true` and `localization.valid=true`, use
+         `localization.defaultLocale` as the authoritative locale. Resolve it
+         with `resolve-locale`, set `SITE_LOCALE`, `SITE_DIRECTION`, and
+         `SITE_LANGUAGE` from the returned `locale`, `direction`, and
+         `languageName`, and retain `localeName` when regional or script detail
+         needs to be displayed. Do not scan locale-specific document roots as
+         though they described one single-language site.
+       - When `localization.detected=true` and `localization.valid=false`, show
+         the localization conflicts and stop before planning customization. The
+         localization configuration must be repaired; do not fall back to
+         static document attributes or report localized roots as a
+         single-language conflict.
+       - When no localization is detected and `siteLanguage.detected=true` with
+         `siteLanguage.valid=true`, resolve `siteLanguage.locale` with
+         `resolve-locale`. Use the returned `locale`, `direction`, and
+         `languageName` to establish `SITE_LOCALE`, `SITE_DIRECTION`, and
+         `SITE_LANGUAGE`.
+       - When `siteLanguage.reason` is `document-not-found`,
+         `html-root-not-found`, `document-ambiguous`, or
+         `document-configuration-invalid`, show its conflicts and
+         `expectedSources`, then stop before planning customization. Locate or
+         repair the actual application root document before asking for a
+         content language.
+       - When the document exists but its static language attributes are
+         missing or invalid, ask the **Content language** question below,
+         resolve the answer with `resolve-locale`, and include repairing
+         `siteLanguage.source` in the approved customization plan.
+
+       After `SITE_LANGUAGE`, `SITE_LOCALE`, and `SITE_DIRECTION` are all
+       established, ask what the user wants changed in `PROJECT_ROOT`. Use the
+       existing Phase 3/4/5/6/7 implementation, verification, and review flow
+       against the cloned project; do **not** run Phase 2 scaffold/copy-template.
+       In Phase 3, skip the Brand sub-prompt and set `BRAND_SOURCE` to
+       `template` - the template's existing theme tokens are the source of truth
+       unless the user asks for a redesign. On this path Phase 5 edits the cloned
+       project in place: keep the existing theme file, layout, and pages, change
+       only what the approved plan names, and skip every `scaffold-status.json`
+       step because no loader is running. Run the Phase 5.7 design critique on
+       the pages you changed.
    21. After the customization plan is approved, mark **Plan template customizations** as `completed`, **Implement pages and components** as `in_progress`, and make the requested changes.
    22. Run the existing validation/review flow. Do not automatically deploy unless the user explicitly asks to run `/deploy-site`.
 
@@ -657,17 +704,92 @@ Write the file with the `Write` tool (atomic overwrite). You do not need to read
    | Which frontend framework? | Framework | React (Recommended), Vue, Angular, Astro |
    | Where should the project be created? | Location | Current directory, New folder in current directory (Recommended), Any other directory |
 
-10. Resolve the project location:
+10. Determine the site's single content language independently of whether the
+   purpose was supplied in `$ARGUMENTS`.
+
+   - If the request explicitly names the content language, resolve it without
+     asking again and include it in the confirmation.
+   - Do not infer the desired site language merely from the language used to
+     converse with the maker.
+
+   <!-- not-a-gate: the locale is validated before it can affect scaffolding -->
+
+   When the content language was not explicit, use `AskUserQuestion`:
+
+   | Question | Header | Options |
+   |----------|--------|---------|
+   | Which language should the site content use?<br><br>Pages, navigation, buttons, forms, and accessibility text will use this language. Dataverse and Power Pages system messages will remain in English. | Site content language | English (`en-US`) (Recommended) |
+
+   The question UI's free-text option lets the maker enter another language or
+   locale, such as `Spanish (es-ES)`, `Japanese (ja-JP)`, or `Arabic (ar-SA)`.
+   Convert a language name to an appropriate BCP-47 tag, preserving an explicit
+   region or script when supplied. Keep the raw answer as data only: never place
+   it in a shell command. In agent memory, convert it to
+   `SAFE_LOCALE_CANDIDATE`, which must match
+   `^[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*$` and be at most 255 characters.
+   Reject and re-prompt before running a command if no safe candidate can be
+   derived. Validate and canonicalize only that constrained candidate:
+
+   ```bash
+   node "${PLUGIN_ROOT}/scripts/lib/localization-config.js" resolve-locale --locale "<SAFE_LOCALE_CANDIDATE>"
+   ```
+
+   Do not quote, escape, sanitize, or otherwise interpolate the raw maker answer
+   into this command. Reject invalid resolver output and re-prompt with the
+   reason. Record the canonical resolver output rather than inventing a
+   language label:
+
+   - `SITE_LANGUAGE` — resolver `languageName`, such as `Spanish`; if display
+     names are unavailable, show the canonical locale and ask the maker for a
+     readable label rather than guessing
+   - `SITE_LOCALE` — canonical BCP-47 tag, such as `es-ES`
+   - `SITE_DIRECTION` — `ltr` or `rtl` from the resolver
+   - `SITE_LOCALE_NAME` — resolver `localeName`, such as `European Spanish`,
+     retained for plan text that needs regional or script specificity
+
+11. Resolve the project location:
    - **If "Current directory"**: Project root = `<cwd>`.
-   - **If "New folder in current directory"**: Create a folder named `__SITE_NAME__` inside the cwd. Project root = `<cwd>/__SITE_NAME__/`.
+   - **If "New folder in current directory"**: Create a folder named
+     `__SITE_NAME__` inside the cwd. Project root =
+     `<cwd>/__SITE_NAME__/`. First verify that `__SITE_NAME__` is a valid
+     directory name on the current operating system. Non-Latin characters alone
+     are not a reason to reject it. If the site name contains invalid path
+     characters, is reserved by the operating system, is empty after
+     sanitization, or otherwise cannot be used safely, fall back to
+     `__SITE_SLUG__`. Before creating a fallback folder, tell the maker which
+     name will be used and why the original site name was not filesystem-safe.
    - **If "Any other directory"**: Ask for the full path. Verify/create it. Project root = provided path.
 
    After resolving, confirm: "The site will be created at `<resolved path>`."
 
    Store this as `PROJECT_ROOT`.
-11. Append the from-scratch task list (Phases 2-8) to the todo list (see [Progress Tracking](#progress-tracking)), then mark **Select template or choose from-scratch** as `completed`.
 
-**Output**: cloned template site identity (`IMPORTED_SITE_NAME`, `IMPORTED_WEBSITE_RECORD_ID`) and a local project path ready for optional customization; or `CREATION_PATH = "from-scratch"` with selected framework and resolved project location.
+12. Finalize the derived values:
+   - `__SITE_NAME__` — preserve the maker's site/brand name as entered, e.g.
+     `Contoso Portal`; it does not need to match the content language.
+   - `__SITE_SLUG__` — a lowercase ASCII kebab-case technical identifier used
+     by npm, Angular project configuration, build paths, and the default folder.
+     Derive it from the site name when possible, e.g. `Contoso Portal` →
+     `contoso-portal`. Transliterate when reliable. If a non-Latin name cannot
+     produce a safe, meaningful slug, derive one from the site's purpose or ask
+     for a technical project name rather than emitting an empty or invalid
+     identifier.
+   - `__SITE_DESCRIPTION__` — one-line description written in `SITE_LANGUAGE`
+     based on the name and purpose.
+
+13. Summarize understanding and confirm with the user before proceeding. Include
+   site name, technical slug, framework, purpose, audience, project location,
+   `SITE_LANGUAGE` (`SITE_LOCALE`, `SITE_DIRECTION`), and the explicit statement
+   that Dataverse and Power Pages system messages remain English.
+
+14. Append the from-scratch task list (Phases 2-8) to the todo list (see
+    [Progress Tracking](#progress-tracking)), then mark **Select template or
+    choose from-scratch** as `completed`.
+
+**Output**: cloned template site identity (`IMPORTED_SITE_NAME`,
+`IMPORTED_WEBSITE_RECORD_ID`) and a local project path ready for optional
+customization; or `CREATION_PATH = "from-scratch"` with selected framework,
+content language, derived naming values, and resolved project location.
 
 ---
 
@@ -713,6 +835,8 @@ See [Live Preview Status Protocol](#live-preview-status-protocol) for the full c
 After copying, replace all `__PLACEHOLDER__` tokens in every file. Use `Edit` with `replace_all: true` on each file.
 
 - **Name/slug/description placeholders**: Use the actual values from Phase 1 (`__SITE_NAME__`, `__SITE_SLUG__`, `__SITE_DESCRIPTION__`).
+- **Document-language placeholders**: Replace `__SITE_LOCALE__` with
+  `SITE_LOCALE` and `__SITE_DIRECTION__` with `SITE_DIRECTION`.
 
 > **Note:** The scaffold loading screen uses hardcoded Power Pages branding colors — there are no color placeholders (`__PRIMARY_COLOR__`, etc.) to replace. The user's chosen color palette is applied fresh during Phase 5 when the scaffold is completely replaced.
 
@@ -855,7 +979,7 @@ Immediately after the dev server starts, verify the scaffold is working:
    The `marker` string is the comment tag Phase 5 emits into the page source as a reserved anchor that `/add-ai-webapi` later finds. Keep the shape uniform — one marker per placement, always the same tag, so the follow-up skill's explore step can grep for them deterministically.
 
 5. Read the design references: `${PLUGIN_ROOT}/references/design-aesthetics.md` and `${PLUGIN_ROOT}/references/page-blueprints.md`.
-6. **Write the experience brief** (design-aesthetics.md section 1) - audience and job, primary and secondary action, principal doubt, proof strategy, design thesis, hero concept, and signature moment. Resolve the brand source first (section 2): for `website`, extract the brand from the URL with the Playwright snippet there; for `assets`, build the palette around the supplied colors; for `fresh`, start from the matching cell of the aesthetic x mood map (section 11). Record the display and body fonts, color direction, geometry, and motion direction.
+6. **Write the experience brief** (design-aesthetics.md section 1) - audience and job, primary and secondary action, principal doubt, proof strategy, design thesis, hero concept, and signature moment. Resolve the brand source first (section 2): for `website`, extract the brand from the URL with the Playwright snippet there; for `assets`, build the palette around the supplied colors; for `fresh`, start from the matching cell of the aesthetic x mood map (section 11). Record the display and body fonts, color direction, geometry, and motion direction. Font choices must support the complete writing system used by `SITE_LOCALE`; verify glyph coverage and shaping rather than selecting a Latin-only font solely because it matches the aesthetic, and use a compatible script-aware fallback stack.
 7. Analyze requirements and determine needed components. Plan each page's content as narrative beats from `page-blueprints.md`, in order, one line per section with its purpose. If `AI_SUMMARY_PLACEMENTS` from step 4 implies a page that wasn't already in the plan (e.g., a `CaseDetail` page for a data-summarization pick on the support-case table), add it to the page list now. Present the component plan to the user as a table:
 
    ```
@@ -891,9 +1015,12 @@ Assemble a single JSON object with the following keys. The plan template rejects
 
 | Key | Type | Content |
 |-----|------|---------|
-| `SITE_NAME` | string | Title-case site name from Phase 1 |
+| `SITE_NAME` | string | Site/brand name from Phase 1, preserved as entered |
 | `PLAN_TITLE` | string | Always `"Implementation Plan"` |
 | `FRAMEWORK` | string | `React` / `Vue` / `Angular` / `Astro` |
+| `SITE_LANGUAGE` | string | Readable content-language name from Phase 1 |
+| `SITE_LOCALE` | string | Canonical BCP-47 content locale |
+| `SITE_DIRECTION` | string | `ltr` or `rtl` |
 | `AESTHETIC` | string | Chosen aesthetic (e.g., `Minimal & Clean`) |
 | `MOOD` | string | Chosen mood (e.g., `Professional & Trustworthy`) |
 | `SUMMARY` | string | One paragraph describing what the site is and who it serves |
@@ -933,7 +1060,7 @@ Open `<OUTPUT_PATH>` in the default browser using the platform-appropriate file 
 Keep the terminal message short — **the full plan lives in the HTML file now**. Include:
 
 - One sentence confirming the plan was rendered and where (the output path).
-- A 3-5 line bullet summary: the design thesis, the signature moment, framework, page and component count.
+- A 3-5 line bullet summary: the design thesis, signature moment, framework, content language, page and component count, and primary palette color.
 - A pointer: "See the open browser tab for the design direction, pages, color swatches, typography samples, and deployment options."
 
 Do NOT dump the full plan contents into the terminal — that defeats the purpose of the HTML view.
@@ -1025,6 +1152,24 @@ The scaffold is a temporary loading screen — it must be **completely replaced*
    - **`search-summary`**: directly above the search-results list, below the search input — the summary paragraph reads before the keyword hits.
 
    One marker per placement, exactly as defined in the `marker` field of the `AI_SUMMARY_PLACEMENTS` record. Do NOT add stub components (`<CopilotSummaryCard />`, etc.), CSS classes, or empty `<aside>` elements — the slot is just a comment. The site must ship as if AI is not a consideration; the follow-up skill does the real work.
+
+**Content-language requirements**:
+
+- Write content natively in `SITE_LANGUAGE`; do not author an English site and
+  mechanically translate it afterward.
+- Localize every user-visible SPA string: navigation, headings, body copy,
+  buttons, links, forms, validation, loading/error/empty states, document
+  titles, metadata, image alt text, and ARIA labels.
+- Keep code identifiers, package names, CSS classes, Dataverse logical names,
+  API endpoints, and environment variables technical and untranslated.
+- Keep route paths as stable semantic English ASCII identifiers by default
+  (for example, `/services`), while navigation labels and page titles use
+  `SITE_LANGUAGE`. Do not translate paths during single-language site creation;
+  stable routes avoid breaking bookmarks, analytics, integrations, tests, and
+  a later `/add-localization` setup. Use localized paths only when the maker
+  explicitly requests them for a permanently single-language SEO strategy.
+- For RTL locales, use logical CSS properties, preserve sensible reading order,
+  and mirror only directional controls/icons.
 
 **Important**: Build real, functional UI with the design thesis applied - not placeholder "coming soon" pages, and not generic unstyled markup. Every page and component reflects the thesis from the moment it's created. The scaffold loading screen should be completely gone after this phase - no trace of the Power Pages branded animation should remain.
 
@@ -1125,12 +1270,12 @@ Use `AskUserQuestion`, naming each failing critical gate and its evidence in the
 
 **Output**: All pages, components, and design elements implemented, critiqued, and verified
 
-### 5.8 Offer and Add Localization
+### 5.8 Offer Additional Languages
 
-Ask whether localization should be added now:
+Ask whether more languages should be added now:
 
-> **Would you like to add localization support to this site now?**
-> This localizes only the SPA user interface; it does not add languages to your Dataverse environment.
+> **Would you like to add more languages now?**
+> The site is currently single-language in `<SITE_LANGUAGE>`. This adds SPA localization only; Dataverse and Power Pages system messages remain English.
 
 <!-- not-a-gate: this selects whether to enter the child workflow, whose Phase 3 gate approves every localization write -->
 
@@ -1138,7 +1283,7 @@ Use `AskUserQuestion` with this exact wording and these exact options:
 
 | Question | Header | Options |
 |----------|--------|---------|
-| Would you like to add localization support to this site now?<br><br>This localizes only the SPA user interface; it does not add languages to your Dataverse environment. | Localization | Yes — configure localization now, No — keep this site single-language |
+| Would you like to add more languages now?<br><br>The site is currently single-language in `<SITE_LANGUAGE>`. This adds SPA localization only; Dataverse and Power Pages system messages remain English. | Additional languages | Yes — add more languages now, No — keep the site in `<SITE_LANGUAGE>` only |
 
 Record the answer as `LOCALIZATION_REQUESTED=true|false`. Ask at this point even
 when `$ARGUMENTS` mentioned localization, so the maker's answer immediately
@@ -1159,7 +1304,27 @@ and its existing deployment prompt.
 
 When `LOCALIZATION_REQUESTED=false`, skip the child workflow.
 
-> **GATE: Do NOT proceed to Phase 6 until the Phase 5.7 design critique is complete and any requested localization has completed.**
+### 5.9 Validate the Approved Site Language
+
+Run the create-site validator explicitly with the approved language context.
+Use only the canonical `SITE_LOCALE` returned by `resolve-locale` and the
+validated `SITE_DIRECTION` enum; never pass the maker's original free-text
+answer. Run the command with its working directory set to `PROJECT_ROOT`:
+
+```bash
+node "${PLUGIN_ROOT}/skills/create-site/scripts/validate-site.js" \
+  --expectedLocale "<SITE_LOCALE>" \
+  --expectedDirection "<SITE_DIRECTION>"
+```
+
+Treat exit code `2` as blocking. Repair the reported document or
+localization-default mismatch and rerun the command until it passes. The
+automatic skill validator runs without these arguments and still checks that
+the detected document or localization context is internally valid. The
+explicit invocation verifies that it also matches the locale and direction
+approved in this create-site session without temporary or persistent metadata.
+
+> **GATE: Do NOT proceed to Phase 6 until the Phase 5.7 design critique is complete, any requested localization has completed, and the approved site language validation passes.**
 
 **Output**: All pages, components, design elements, and requested localization implemented and verified
 
@@ -1203,7 +1368,7 @@ For each violation found, identify the source file and apply the fix:
 | Missing landmark regions | Wrap content in `<main>`, `<nav>`, `<header>`, `<footer>` |
 | Skipped heading levels | Correct heading hierarchy (h1 → h2 → h3, no gaps) |
 | Missing link text | Add descriptive text or `aria-label` to links |
-| Missing `lang` attribute | Add `lang="en"` to the `<html>` tag |
+| Missing or incorrect `lang`/`dir` attributes | Set `lang="<SITE_LOCALE>"` and `dir="<SITE_DIRECTION>"` on the root `<html>` element |
 | Inadequate focus indicators | Add visible `outline` styles to interactive elements |
 
 After fixing each group of related violations, commit:
@@ -1264,7 +1429,10 @@ Present a summary table to the user:
    | Git Commits         | 9     | scaffold + 8 feature and critique commits |
    ```
 
-   Follow it with the design thesis in one sentence and the scorecard (category, score, one-line evidence), including any category recorded below 3 and why. Then list the sample content still in the site - search `src` for `SAMPLE CONTENT` markers and give each marker's file and what it stands in for - so the user can supply real content in this review.
+   Follow it with the design thesis in one sentence and the scorecard (category, score, one-line evidence), including any category recorded below 3 and why. Include `SITE_LANGUAGE`, `SITE_LOCALE`, and `SITE_DIRECTION`, and ask the maker
+   to review linguistic correctness, terminology, tone, regional wording, and
+   any legal, medical, financial, or regulated text; automated checks cannot
+   validate language quality. Then list the sample content still in the site - search `src` for `SAMPLE CONTENT` markers and give each marker's file and what it stands in for - so the user can supply real content in this review.
 
 3. Share the dev server URL with the user and list all available routes
 4. Ask the user to review using `AskUserQuestion`:
@@ -1304,6 +1472,8 @@ Present a summary table to the user:
 5. Mark all todos complete
 6. Present a final summary:
    - Site name and purpose
+   - Site content language and the fact that Dataverse/Power Pages system
+     messages remain English
    - Framework and project location
    - Components created (X pages, Y components, Z design elements)
    - Key files and their purposes
@@ -1365,7 +1535,7 @@ After Phase 1.5 selects the from-scratch path, append the existing from-scratch 
 | Scaffold and launch dev server | Scaffolding project | Copy template, replace placeholders with defaults, git init, npm install, start dev server, share URL |
 | Plan site components | Planning components | Determine pages, components, design direction, and routes while user previews scaffold |
 | Approve implementation plan | Getting plan approval | Present implementation plan covering design and pages, get user approval |
-| Implement pages and components | Building site | Apply design tokens, create all pages, components, routing, and navigation, run the design critique pass, then ask whether to configure localization |
+| Implement pages and components | Building site | Apply design tokens, create all pages, components, routing, and navigation in the approved content language, run the design critique pass, then ask whether to add more languages |
 | Verify accessibility with axe-core | Verifying accessibility | Run axe-core on every page, fix all critical/serious violations, re-verify until passing |
 | Review with user | Reviewing site | Navigate all pages, share URL, get user feedback, apply changes |
 | Deploy and wrap up | Deploying site | Ask about deployment, present summary, suggest next steps |
@@ -1412,8 +1582,10 @@ Every site must meet these standards before completion:
 - Passes the Phase 5.7 design critique: no critical gate fails, and every rubric category scores 3 or more or, after three rounds, is recorded below 3 with its reason (see `design-critique.md`); a critical gate the user chose to continue past is recorded as a known issue
 - Design tokens (color roles, fonts, spacing, radii, shadows, motion) defined once in the theme file and consumed everywhere
 - Chosen Google Fonts verified loaded by the font check
+- Complete glyph coverage and correct shaping for `SITE_LOCALE`
 - All requested pages and features implemented (not placeholders)
 - All routes working and navigation complete
+- Root document uses the approved `SITE_LOCALE` and `SITE_DIRECTION`
 - Accessibility verified via axe-core — zero critical/serious violations on all pages
 - Git commits at key milestones
 - Verified via Playwright

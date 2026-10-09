@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -9,15 +10,24 @@ const {
   LOCALIZATION_CAPABILITIES,
   detectFramework,
   detectLocalization,
+  detectSiteLanguage,
+  detectSiteLanguageForFramework,
   discoverLocalizationImplementation,
+  getLocaleDirection,
   inspectProject,
+  isSafeLocaleCandidate,
+  isSafeLocaleListCandidate,
   protectedTokenSignature,
   resolveProjectRelativePath,
+  resolveLocale,
+  resolveSiteLanguageContext,
   verifyInitializationEvidence,
   validateLocalizationManifestShape,
   validateLocales,
 } = require('../lib/localization-config');
 const { createTempProject, writeProjectFile } = require('./test-utils');
+
+const CONFIG_PATH = path.join(__dirname, '..', 'lib', 'localization-config.js');
 
 function writePackage(projectRoot, dependencies) {
   writeProjectFile(projectRoot, 'package.json', JSON.stringify({ dependencies }, null, 2));
@@ -258,6 +268,465 @@ test('canonicalizes, visibly deduplicates, and validates registry subtags', () =
   assert.deepEqual(result.canonicalization, [{ input: 'en-us', canonical: 'en-US' }]);
   assert.deepEqual(result.duplicates, [{ input: 'en-US', canonical: 'en-US' }]);
   assert.match(result.invalid[0].reason, /unknown language subtag "xx"/);
+});
+
+test('accepts only constrained locale candidates before canonicalization', () => {
+  assert.equal(isSafeLocaleCandidate('es-ES'), true);
+  assert.equal(isSafeLocaleCandidate('zh-Hant-TW'), true);
+  assert.equal(isSafeLocaleCandidate('x-contoso'), true);
+  assert.equal(isSafeLocaleCandidate('Spanish (es-ES)'), false);
+  assert.equal(isSafeLocaleCandidate('en_US'), false);
+  assert.equal(isSafeLocaleCandidate('en-US;whoami'), false);
+  assert.equal(isSafeLocaleCandidate('$(whoami)'), false);
+  assert.equal(isSafeLocaleCandidate('en-US|whoami'), false);
+  assert.equal(isSafeLocaleCandidate("en-US\nwhoami"), false);
+  assert.equal(isSafeLocaleCandidate(`en-${'a'.repeat(256)}`), false);
+});
+
+test('accepts only compact comma-separated safe locale lists', () => {
+  assert.equal(isSafeLocaleListCandidate('en-US,fr-FR,ar-SA'), true);
+  assert.equal(isSafeLocaleListCandidate('en-US, fr-FR'), false);
+  assert.equal(isSafeLocaleListCandidate('en-US;whoami,fr-FR'), false);
+  assert.equal(isSafeLocaleListCandidate('en-US,$(whoami)'), false);
+  assert.equal(isSafeLocaleListCandidate('en-US|whoami,fr-FR'), false);
+  assert.equal(isSafeLocaleListCandidate("en-US,\nfr-FR"), false);
+  assert.equal(isSafeLocaleListCandidate(`en-US,${'a'.repeat(4096)}`), false);
+});
+
+test('rejects unsafe locale syntax before BCP-47 canonicalization', () => {
+  const result = validateLocales([
+    'Spanish (es-ES)',
+    'en_US',
+    'en-US;whoami',
+    '$(whoami)',
+    'en-US|whoami',
+    "en-US\nwhoami",
+  ]);
+
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.locales, []);
+  assert.equal(result.invalid.length, 6);
+  for (const invalid of result.invalid) {
+    assert.match(invalid.reason, /ASCII alphanumeric subtags separated by hyphens/);
+  }
+});
+
+test('resolves a single locale, direction, and canonical display names', () => {
+  const spanish = resolveLocale('es-es');
+  assert.equal(spanish.locale, 'es-ES');
+  assert.equal(spanish.direction, 'ltr');
+  assert.equal(spanish.languageName, 'Spanish');
+  assert.equal(spanish.localeName, 'European Spanish');
+  assert.equal(spanish.nativeLanguageName, 'español');
+  assert.equal(spanish.nativeLocaleName, 'español de España');
+
+  const traditionalChinese = resolveLocale('zh-Hant-TW');
+  assert.equal(traditionalChinese.languageName, 'Chinese');
+  assert.match(traditionalChinese.localeName, /Traditional/);
+  assert.equal(traditionalChinese.nativeLanguageName, '中文');
+  assert.ok(traditionalChinese.nativeLocaleName);
+
+  assert.equal(getLocaleDirection('ar-SA'), 'rtl');
+  assert.equal(getLocaleDirection('x-contoso'), 'ltr');
+});
+
+test('does not invent display names for private-use-only locales', () => {
+  const result = resolveLocale('x-contoso');
+
+  assert.equal(result.valid, true);
+  assert.equal(result.locale, 'x-contoso');
+  assert.equal(result.direction, 'ltr');
+  assert.equal(result.languageName, null);
+  assert.equal(result.localeName, null);
+  assert.equal(result.nativeLanguageName, null);
+  assert.equal(result.nativeLocaleName, null);
+});
+
+test('returns null display names for invalid locale input', () => {
+  const result = resolveLocale('not_a_locale');
+
+  assert.equal(result.valid, false);
+  assert.equal(result.locale, null);
+  assert.equal(result.direction, null);
+  assert.equal(result.languageName, null);
+  assert.equal(result.localeName, null);
+  assert.equal(result.nativeLanguageName, null);
+  assert.equal(result.nativeLocaleName, null);
+});
+
+test('resolve-locale CLI returns canonical display names for create-site', () => {
+  const result = spawnSync(
+    process.execPath,
+    [CONFIG_PATH, 'resolve-locale', '--locale', 'pt-br'],
+    { encoding: 'utf8' }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.locale, 'pt-BR');
+  assert.equal(output.languageName, 'Portuguese');
+  assert.equal(output.localeName, 'Brazilian Portuguese');
+  assert.equal(output.nativeLanguageName, 'português');
+  assert.equal(output.nativeLocaleName, 'português (Brasil)');
+});
+
+test('detects the persisted single-site language from document attributes', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(projectRoot, 'index.html', '<html lang="es-ES" dir="ltr"><body></body></html>');
+
+  assert.deepEqual(detectSiteLanguage(projectRoot, 'react'), {
+    detected: true,
+    valid: true,
+    locale: 'es-ES',
+    direction: 'ltr',
+    source: 'index.html',
+    conflicts: [],
+  });
+});
+
+test('reports missing or incorrect document direction', (t) => {
+  const missingRoot = createTempProject(t);
+  writeProjectFile(missingRoot, 'src/index.html', '<html lang="ar-SA"><body></body></html>');
+  assert.match(
+    detectSiteLanguage(missingRoot, 'angular').conflicts.join('\n'),
+    /missing a valid html dir attribute/
+  );
+
+  const mismatchedRoot = createTempProject(t);
+  writeProjectFile(
+    mismatchedRoot,
+    'src/index.html',
+    '<html lang="ar-SA" dir="ltr"><body></body></html>'
+  );
+  assert.match(
+    detectSiteLanguage(mismatchedRoot, 'angular').conflicts.join('\n'),
+    /resolves to "rtl"/
+  );
+});
+
+test('uses only the framework document path for React and Vue', (t) => {
+  for (const framework of ['react', 'vue']) {
+    const projectRoot = createTempProject(t);
+    writeProjectFile(
+      projectRoot,
+      'src/index.html',
+      '<html lang="fr-FR" dir="ltr"><body></body></html>'
+    );
+
+    const result = detectSiteLanguage(projectRoot, framework);
+    assert.equal(result.detected, false);
+    assert.equal(result.reason, 'document-not-found');
+    assert.deepEqual(result.expectedSources, ['index.html']);
+  }
+});
+
+test('uses the Angular index configured in angular.json', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(projectRoot, 'angular.json', JSON.stringify({
+    projects: {
+      portal: {
+        projectType: 'application',
+        targets: {
+          build: {
+            options: {
+              index: {
+                input: 'src/site-shell.html',
+                output: 'index.html',
+              },
+            },
+          },
+        },
+      },
+    },
+  }));
+  writeProjectFile(
+    projectRoot,
+    'index.html',
+    '<html lang="de-DE" dir="ltr"><body></body></html>'
+  );
+  writeProjectFile(
+    projectRoot,
+    'src/site-shell.html',
+    '<html lang="es-ES" dir="ltr"><body></body></html>'
+  );
+
+  const result = detectSiteLanguage(projectRoot, 'angular');
+  assert.equal(result.valid, true, result.conflicts.join('\n'));
+  assert.equal(result.locale, 'es-ES');
+  assert.equal(result.source, 'src/site-shell.html');
+});
+
+test('does not use an unrelated root index for Angular', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(
+    projectRoot,
+    'index.html',
+    '<html lang="de-DE" dir="ltr"><body></body></html>'
+  );
+
+  const result = detectSiteLanguage(projectRoot, 'angular');
+  assert.equal(result.detected, false);
+  assert.equal(result.reason, 'document-not-found');
+  assert.deepEqual(result.expectedSources, ['src/index.html']);
+});
+
+test('reports ambiguous Angular application index configuration', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(projectRoot, 'angular.json', JSON.stringify({
+    projects: {
+      first: {
+        targets: { build: { options: { index: 'src/first.html' } } },
+      },
+      second: {
+        architect: { build: { options: { index: 'src/second.html' } } },
+      },
+    },
+  }));
+
+  const result = detectSiteLanguage(projectRoot, 'angular');
+  assert.equal(result.detected, false);
+  assert.equal(result.reason, 'document-ambiguous');
+  assert.deepEqual(result.expectedSources, ['src/first.html', 'src/second.html']);
+});
+
+test('detects Astro document language in layouts and nested pages', (t) => {
+  const layoutRoot = createTempProject(t);
+  writeProjectFile(
+    layoutRoot,
+    'src/layouts/Base.astro',
+    '<html lang="ja-JP" dir="ltr"><body><slot /></body></html>'
+  );
+  assert.equal(detectSiteLanguage(layoutRoot, 'astro').source, 'src/layouts/Base.astro');
+
+  const pageRoot = createTempProject(t);
+  writeProjectFile(
+    pageRoot,
+    'src/pages/account/index.astro',
+    '<html lang="ar-SA" dir="rtl"><body></body></html>'
+  );
+  const pageResult = detectSiteLanguage(pageRoot, 'astro');
+  assert.equal(pageResult.valid, true, pageResult.conflicts.join('\n'));
+  assert.equal(pageResult.locale, 'ar-SA');
+  assert.equal(pageResult.source, 'src/pages/account/index.astro');
+});
+
+test('distinguishes a missing document from missing html language attributes', (t) => {
+  const missingDocumentRoot = createTempProject(t);
+  const missingDocument = detectSiteLanguage(missingDocumentRoot, 'react');
+  assert.equal(missingDocument.reason, 'document-not-found');
+  assert.deepEqual(missingDocument.expectedSources, ['index.html']);
+
+  const missingAttributesRoot = createTempProject(t);
+  writeProjectFile(
+    missingAttributesRoot,
+    'index.html',
+    '<html><body></body></html>'
+  );
+  const missingAttributes = detectSiteLanguage(missingAttributesRoot, 'react');
+  assert.equal(missingAttributes.detected, true);
+  assert.equal(missingAttributes.reason, 'language-attributes-missing');
+  assert.equal(missingAttributes.source, 'index.html');
+  assert.match(missingAttributes.conflicts.join('\n'), /static html lang attribute/);
+});
+
+test('does not inspect site language until one supported framework is resolved', (t) => {
+  const unsupportedRoot = createTempProject(t);
+  writePackage(unsupportedRoot, { lodash: '^4.17.21' });
+  writeProjectFile(
+    unsupportedRoot,
+    'index.html',
+    '<html lang="fr-FR" dir="ltr"><body></body></html>'
+  );
+
+  const unsupported = inspectProject(unsupportedRoot);
+  assert.equal(unsupported.framework.framework, null);
+  assert.equal(unsupported.framework.ambiguous, false);
+  assert.deepEqual(unsupported.siteLanguage, {
+    detected: false,
+    valid: false,
+    locale: null,
+    direction: null,
+    source: null,
+    conflicts: [],
+    reason: 'framework-unsupported',
+  });
+
+  const ambiguousRoot = createTempProject(t);
+  writePackage(ambiguousRoot, {
+    react: '^19.0.0',
+    'react-dom': '^19.0.0',
+    vue: '^3.5.0',
+  });
+  writeProjectFile(
+    ambiguousRoot,
+    'index.html',
+    '<html lang="fr-FR" dir="ltr"><body></body></html>'
+  );
+
+  const ambiguous = inspectProject(ambiguousRoot);
+  assert.equal(ambiguous.framework.ambiguous, true);
+  assert.equal(ambiguous.siteLanguage.detected, false);
+  assert.equal(ambiguous.siteLanguage.reason, 'framework-ambiguous');
+
+  const supportedRoot = createTempProject(t);
+  writePackage(supportedRoot, { react: '^19.0.0', 'react-dom': '^19.0.0' });
+  writeProjectFile(
+    supportedRoot,
+    'index.html',
+    '<html lang="de-DE" dir="ltr"><body></body></html>'
+  );
+
+  const supported = inspectProject(supportedRoot);
+  assert.equal(supported.framework.framework, 'react');
+  assert.equal(supported.siteLanguage.detected, true);
+  assert.equal(supported.siteLanguage.locale, 'de-DE');
+});
+
+test('detects site language after an evidence-backed framework selection', (t) => {
+  const projectRoot = createTempProject(t);
+  writePackage(projectRoot, {
+    react: '^19.0.0',
+    'react-dom': '^19.0.0',
+    astro: '^6.1.0',
+  });
+  writeProjectFile(
+    projectRoot,
+    'src/layouts/Layout.astro',
+    '<html lang="ar-SA" dir="rtl"><body><slot /></body></html>'
+  );
+
+  const result = detectSiteLanguageForFramework(projectRoot, 'astro');
+  assert.equal(result.detected, true);
+  assert.equal(result.locale, 'ar-SA');
+  assert.equal(result.direction, 'rtl');
+  assert.equal(result.source, 'src/layouts/Layout.astro');
+  assert.throws(
+    () => detectSiteLanguageForFramework(projectRoot, 'vue'),
+    /not supported by the detected project evidence/
+  );
+});
+
+test('uses valid localization default locale before static document attributes', (t) => {
+  const projectRoot = createTempProject(t);
+  writePackage(projectRoot, {
+    react: '^19.0.0',
+    'react-dom': '^19.0.0',
+    i18next: '^25.0.0',
+    'react-i18next': '^16.0.0',
+  });
+  writeProjectFile(
+    projectRoot,
+    'index.html',
+    '<html lang="de-DE" dir="ltr"><body></body></html>'
+  );
+  writeProjectFile(projectRoot, 'src/i18n/index.ts', "i18next.init({ fallbackLng: 'es-ES' });");
+  writeProjectFile(projectRoot, 'src/i18n/locales/es-ES.json', '{"home":"Inicio"}');
+  writeProjectFile(projectRoot, 'src/i18n/locales/ar-SA.json', '{"home":"الرئيسية"}');
+  writeProjectFile(
+    projectRoot,
+    'src/components/LanguageSelector.tsx',
+    "export function LanguageSelector(){ changeLanguage('ar-SA'); document.documentElement.lang='ar-SA'; document.documentElement.dir='rtl'; }"
+  );
+
+  const result = inspectProject(projectRoot);
+  assert.equal(result.localization.valid, true, result.localization.conflicts.join('\n'));
+  assert.deepEqual(result.siteLanguage, {
+    detected: true,
+    valid: true,
+    locale: 'es-ES',
+    direction: 'ltr',
+    source: 'localization configuration',
+    conflicts: [],
+    reason: 'localization-default',
+  });
+});
+
+test('does not treat localized document roots as single-language conflicts', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(
+    projectRoot,
+    'src/pages/en/index.astro',
+    '<html lang="en-US" dir="ltr"><body></body></html>'
+  );
+  writeProjectFile(
+    projectRoot,
+    'src/pages/ar/index.astro',
+    '<html lang="ar-SA" dir="rtl"><body></body></html>'
+  );
+
+  const result = resolveSiteLanguageContext(projectRoot, 'astro', {
+    detected: true,
+    valid: true,
+    manifestPath: path.join(projectRoot, '.powerpages-localization.json'),
+    defaultLocale: 'ar-SA',
+    conflicts: [],
+  });
+
+  assert.deepEqual(result, {
+    detected: true,
+    valid: true,
+    locale: 'ar-SA',
+    direction: 'rtl',
+    source: '.powerpages-localization.json',
+    conflicts: [],
+    reason: 'localization-default',
+  });
+});
+
+test('reports invalid localization instead of document-root language conflicts', (t) => {
+  const projectRoot = createTempProject(t);
+  writeProjectFile(
+    projectRoot,
+    'src/pages/en/index.astro',
+    '<html lang="en-US" dir="ltr"><body></body></html>'
+  );
+  writeProjectFile(
+    projectRoot,
+    'src/pages/fr/index.astro',
+    '<html lang="fr-FR" dir="ltr"><body></body></html>'
+  );
+
+  const result = resolveSiteLanguageContext(projectRoot, 'astro', {
+    detected: true,
+    valid: false,
+    manifestPath: path.join(projectRoot, '.powerpages-localization.json'),
+    defaultLocale: 'en-US',
+    conflicts: ['localization initialization could not be determined'],
+  });
+
+  assert.equal(result.reason, 'localization-invalid');
+  assert.deepEqual(result.conflicts, ['localization initialization could not be determined']);
+  assert.doesNotMatch(result.conflicts.join('\n'), /Conflicting document languages/);
+});
+
+test('detect-site-language CLI reruns detection for a selected framework', (t) => {
+  const projectRoot = createTempProject(t);
+  writePackage(projectRoot, {
+    react: '^19.0.0',
+    'react-dom': '^19.0.0',
+    vue: '^3.5.0',
+  });
+  writeProjectFile(
+    projectRoot,
+    'index.html',
+    '<html lang="es-ES" dir="ltr"><body></body></html>'
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      CONFIG_PATH,
+      'detect-site-language',
+      '--projectRoot',
+      projectRoot,
+      '--framework',
+      'react',
+    ],
+    { encoding: 'utf8' }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).locale, 'es-ES');
 });
 
 test('accepts scripts, regions, variants, extensions, and private-use suffixes', () => {

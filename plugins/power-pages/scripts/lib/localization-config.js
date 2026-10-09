@@ -604,6 +604,28 @@ function validateCanonicalTag(canonicalTag, registry) {
   return errors;
 }
 
+const MAX_LOCALE_CANDIDATE_LENGTH = 255;
+const MAX_LOCALE_LIST_CANDIDATE_LENGTH = 4096;
+const SAFE_LOCALE_CANDIDATE_PATTERN =
+  /^[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
+
+function isSafeLocaleCandidate(value) {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_LOCALE_CANDIDATE_LENGTH &&
+    SAFE_LOCALE_CANDIDATE_PATTERN.test(value)
+  );
+}
+
+function isSafeLocaleListCandidate(value) {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_LOCALE_LIST_CANDIDATE_LENGTH &&
+    value.length > 0 &&
+    value.split(',').every(isSafeLocaleCandidate)
+  );
+}
+
 function validateLocales(input, options = {}) {
   const registry = loadRegistry(options.registryPath);
   const rawValues = Array.isArray(input) ? input : String(input || '').split(',');
@@ -617,6 +639,14 @@ function validateLocales(input, options = {}) {
     const original = String(rawValue).trim();
     if (!original) {
       invalid.push({ input: original, reason: 'empty language tag' });
+      continue;
+    }
+    if (!isSafeLocaleCandidate(original)) {
+      invalid.push({
+        input: original,
+        reason:
+          'language tag must contain only 1-8 character ASCII alphanumeric subtags separated by hyphens',
+      });
       continue;
     }
 
@@ -683,6 +713,92 @@ function validateLocales(input, options = {}) {
     duplicates,
     invalid,
     registryFileDate: registry.fileDate,
+  };
+}
+
+function getLocaleDirection(locale) {
+  let canonical;
+  let parsed;
+  try {
+    [canonical] = Intl.getCanonicalLocales(locale);
+    parsed = new Intl.Locale(canonical);
+  } catch {
+    // Private-use-only tags such as x-contoso are valid BCP-47 identifiers but
+    // do not carry script metadata from which a direction can be derived.
+    return 'ltr';
+  }
+
+  // Node exposes Unicode text direction through Intl.Locale.textInfo. Keep the
+  // language fallback for older Node releases that do not implement it.
+  const intlDirection = parsed.textInfo?.direction;
+  if (intlDirection === 'rtl' || intlDirection === 'ltr') return intlDirection;
+
+  const rtlLanguages = new Set(['ar', 'dv', 'fa', 'he', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi']);
+  return rtlLanguages.has(parsed.language.toLowerCase()) ? 'rtl' : 'ltr';
+}
+
+function getLocaleDisplayNames(locale) {
+  let parsed;
+  try {
+    parsed = new Intl.Locale(locale);
+  } catch {
+    // Private-use-only tags have no language subtag that Intl.DisplayNames can
+    // translate. Keep the canonical tag usable while exposing no invented name.
+    return {
+      languageName: null,
+      localeName: null,
+      nativeLanguageName: null,
+      nativeLocaleName: null,
+    };
+  }
+
+  try {
+    const englishNames = new Intl.DisplayNames(['en'], {
+      type: 'language',
+      fallback: 'none',
+    });
+    const nativeNames = new Intl.DisplayNames([locale], {
+      type: 'language',
+      fallback: 'none',
+    });
+    return {
+      languageName: englishNames.of(parsed.language) || null,
+      localeName: englishNames.of(locale) || null,
+      nativeLanguageName: nativeNames.of(parsed.language) || null,
+      nativeLocaleName: nativeNames.of(locale) || null,
+    };
+  } catch {
+    // Minimal ICU builds may not include display-name data. Callers can still
+    // use the validated canonical locale rather than guessing a language name.
+    return {
+      languageName: null,
+      localeName: null,
+      nativeLanguageName: null,
+      nativeLocaleName: null,
+    };
+  }
+}
+
+function resolveLocale(input) {
+  const validation = validateLocales([input]);
+  if (!validation.valid || validation.locales.length !== 1) {
+    return {
+      ...validation,
+      locale: null,
+      direction: null,
+      languageName: null,
+      localeName: null,
+      nativeLanguageName: null,
+      nativeLocaleName: null,
+    };
+  }
+
+  const [locale] = validation.locales;
+  return {
+    ...validation,
+    locale,
+    direction: getLocaleDirection(locale),
+    ...getLocaleDisplayNames(locale),
   };
 }
 
@@ -1039,9 +1155,356 @@ function discoverLocalizationImplementation(
   };
 }
 
+function relativeProjectPath(projectRoot, filePath) {
+  return path.relative(projectRoot, filePath).replace(/\\/g, '/');
+}
+
+function discoverAngularDocument(projectRoot) {
+  const defaultSource = 'src/index.html';
+  const angularConfigPath = path.join(projectRoot, 'angular.json');
+  if (!fs.existsSync(angularConfigPath)) {
+    return {
+      candidates: [path.join(projectRoot, defaultSource)],
+      expectedSources: [defaultSource],
+    };
+  }
+
+  const angularConfig = readJson(angularConfigPath);
+  if (!angularConfig || typeof angularConfig !== 'object' || Array.isArray(angularConfig)) {
+    return {
+      candidates: [],
+      expectedSources: ['angular.json'],
+      reason: 'document-configuration-invalid',
+      conflicts: ['angular.json is not valid JSON.'],
+    };
+  }
+
+  const configuredSources = [];
+  const projects = angularConfig.projects &&
+    typeof angularConfig.projects === 'object' &&
+    !Array.isArray(angularConfig.projects)
+    ? angularConfig.projects
+    : {};
+  for (const project of Object.values(projects)) {
+    if (!project || typeof project !== 'object' || Array.isArray(project)) continue;
+    const build = project.targets?.build || project.architect?.build;
+    const index = build?.options?.index;
+    const input = typeof index === 'string'
+      ? index
+      : index && typeof index === 'object' && typeof index.input === 'string'
+        ? index.input
+        : null;
+    if (input?.trim()) configuredSources.push(input.trim().replace(/\\/g, '/'));
+  }
+
+  const uniqueSources = [...new Set(configuredSources)];
+  if (uniqueSources.length > 1) {
+    return {
+      candidates: [],
+      expectedSources: uniqueSources,
+      reason: 'document-ambiguous',
+      conflicts: [
+        `angular.json configures multiple application index documents: ${uniqueSources.join(', ')}.`,
+      ],
+    };
+  }
+
+  const source = uniqueSources[0] || defaultSource;
+  const resolved = resolveProjectRelativePath(projectRoot, source);
+  if (!resolved.valid) {
+    return {
+      candidates: [],
+      expectedSources: [source],
+      reason: 'document-configuration-invalid',
+      conflicts: [
+        `angular.json index path "${source}" ${resolved.reason}.`,
+      ],
+    };
+  }
+
+  return {
+    candidates: [resolved.path],
+    expectedSources: [source],
+  };
+}
+
+function discoverSiteDocuments(projectRoot, framework) {
+  const resolvedRoot = path.resolve(projectRoot);
+  if (framework === 'react' || framework === 'vue') {
+    return {
+      candidates: [path.join(resolvedRoot, 'index.html')],
+      expectedSources: ['index.html'],
+    };
+  }
+  if (framework === 'angular') {
+    return discoverAngularDocument(resolvedRoot);
+  }
+  if (framework === 'astro') {
+    const candidates = [];
+    for (const relativeDirectory of ['src/layouts', 'src/pages']) {
+      const directory = path.join(resolvedRoot, relativeDirectory);
+      if (!fs.existsSync(directory)) continue;
+      for (const filePath of walkFiles(directory)) {
+        if (/\.astro$/i.test(filePath)) candidates.push(filePath);
+      }
+    }
+    return {
+      candidates,
+      expectedSources: candidates.length
+        ? candidates.map((filePath) => relativeProjectPath(resolvedRoot, filePath))
+        : ['src/layouts/**/*.astro', 'src/pages/**/*.astro'],
+    };
+  }
+  throw new Error(`Unsupported framework selection: ${framework || '<empty>'}.`);
+}
+
+function detectSiteLanguage(projectRoot, framework) {
+  const resolvedRoot = path.resolve(projectRoot);
+  const discovery = discoverSiteDocuments(resolvedRoot, framework);
+  if (discovery.reason) {
+    return {
+      detected: false,
+      valid: false,
+      locale: null,
+      direction: null,
+      source: null,
+      conflicts: discovery.conflicts || [],
+      reason: discovery.reason,
+      expectedSources: discovery.expectedSources,
+    };
+  }
+
+  const existingCandidates = discovery.candidates.filter((filePath) =>
+    fs.existsSync(filePath) && fs.statSync(filePath).isFile()
+  );
+  if (existingCandidates.length === 0) {
+    return {
+      detected: false,
+      valid: false,
+      locale: null,
+      direction: null,
+      source: null,
+      conflicts: [],
+      reason: 'document-not-found',
+      expectedSources: discovery.expectedSources,
+    };
+  }
+
+  const findings = [];
+  const documentsWithoutHtmlRoot = [];
+  for (const filePath of existingCandidates) {
+    const text = fs.readFileSync(filePath, 'utf8');
+    const htmlTag = text.match(/<html\b[^>]*>/i)?.[0];
+    const source = relativeProjectPath(resolvedRoot, filePath);
+    if (!htmlTag) {
+      documentsWithoutHtmlRoot.push(source);
+      continue;
+    }
+    const lang = htmlTag.match(/\blang\s*=\s*(["'])([^"']+)\1/i)?.[2];
+    const direction = htmlTag.match(/\bdir\s*=\s*(["'])([^"']+)\1/i)?.[2]?.toLowerCase() || null;
+    findings.push({
+      source,
+      lang: lang && !/[{}]/.test(lang) ? lang : null,
+      direction,
+    });
+  }
+
+  if (findings.length === 0) {
+    return {
+      detected: false,
+      valid: false,
+      locale: null,
+      direction: null,
+      source: null,
+      conflicts: documentsWithoutHtmlRoot.map(
+        (source) => `${source} does not contain a root html element.`
+      ),
+      reason: 'html-root-not-found',
+      expectedSources: existingCandidates.map(
+        (filePath) => relativeProjectPath(resolvedRoot, filePath)
+      ),
+    };
+  }
+
+  const conflicts = [];
+  const resolved = findings.map((finding) => ({
+    ...finding,
+    resolved: finding.lang ? resolveLocale(finding.lang) : null,
+  }));
+  for (const finding of resolved) {
+    if (!finding.lang) {
+      conflicts.push(`${finding.source} is missing a static html lang attribute.`);
+      continue;
+    }
+    if (!finding.resolved.valid) {
+      conflicts.push(
+        `${finding.source} has an invalid document language "${finding.lang}".`
+      );
+      continue;
+    }
+    if (!['ltr', 'rtl'].includes(finding.direction)) {
+      conflicts.push(`${finding.source} is missing a valid html dir attribute.`);
+      continue;
+    }
+    if (finding.direction !== finding.resolved.direction) {
+      conflicts.push(
+        `${finding.source} uses dir="${finding.direction}" but ` +
+        `${finding.resolved.locale} resolves to "${finding.resolved.direction}".`
+      );
+    }
+  }
+
+  const distinctLocales = [...new Set(
+    resolved
+      .filter((finding) => finding.resolved?.valid)
+      .map((finding) => finding.resolved.locale)
+  )];
+  if (distinctLocales.length > 1) {
+    conflicts.push(
+      `Conflicting document languages were found: ${distinctLocales.join(', ')}.`
+    );
+  }
+
+  const primary = resolved.find((finding) => finding.resolved?.valid) || resolved[0];
+  const missingAttributes = resolved.some((finding) =>
+    !finding.lang || !['ltr', 'rtl'].includes(finding.direction)
+  );
+  return {
+    detected: true,
+    valid: conflicts.length === 0,
+    locale: primary.resolved?.locale || null,
+    direction: primary.direction,
+    source: primary.source,
+    conflicts,
+    ...(conflicts.length
+      ? {
+        reason: distinctLocales.length > 1
+          ? 'document-language-conflict'
+          : missingAttributes
+            ? 'language-attributes-missing'
+            : 'document-language-invalid',
+      }
+      : {}),
+  };
+}
+
+function unresolvedSiteLanguage(reason) {
+  return {
+    detected: false,
+    valid: false,
+    locale: null,
+    direction: null,
+    source: null,
+    conflicts: [],
+    reason,
+  };
+}
+
+function resolveSiteLanguageContext(projectRoot, selectedFramework, localization) {
+  const resolvedRoot = path.resolve(projectRoot);
+  const localizationState = localization || detectLocalization(resolvedRoot);
+
+  // A localized site can legitimately have several locale-specific document roots.
+  // Its configured default locale is authoritative; scanning those documents as if
+  // they described one single-language site would create false conflicts.
+  if (localizationState.detected) {
+    const source = localizationState.manifestPath
+      ? path.relative(resolvedRoot, localizationState.manifestPath).replaceAll('\\', '/')
+      : 'localization configuration';
+    if (!localizationState.valid || !localizationState.defaultLocale) {
+      return {
+        detected: true,
+        valid: false,
+        locale: null,
+        direction: null,
+        source,
+        conflicts: localizationState.conflicts.length
+          ? [...localizationState.conflicts]
+          : ['Existing localization configuration has no valid default locale.'],
+        reason: 'localization-invalid',
+      };
+    }
+
+    const resolved = resolveLocale(localizationState.defaultLocale);
+    if (!resolved.valid) {
+      return {
+        detected: true,
+        valid: false,
+        locale: null,
+        direction: null,
+        source,
+        conflicts: ['Existing localization configuration has an invalid default locale.'],
+        reason: 'localization-invalid',
+      };
+    }
+
+    return {
+      detected: true,
+      valid: true,
+      locale: resolved.locale,
+      direction: resolved.direction,
+      source,
+      conflicts: [],
+      reason: 'localization-default',
+    };
+  }
+
+  return detectSiteLanguage(resolvedRoot, selectedFramework);
+}
+
+function detectSiteLanguageForFramework(projectRoot, selectedFramework) {
+  const resolvedRoot = path.resolve(projectRoot);
+  if (!Object.hasOwn(LOCALIZATION_CAPABILITIES.frameworks, selectedFramework)) {
+    throw new Error(`Unsupported framework selection: ${selectedFramework || '<empty>'}.`);
+  }
+
+  const detection = detectFramework(resolvedRoot);
+  const evidenceBacked = detection.framework === selectedFramework ||
+    detection.candidates.includes(selectedFramework);
+  if (!evidenceBacked) {
+    throw new Error(
+      `Framework selection "${selectedFramework}" is not supported by the detected project evidence.`
+    );
+  }
+
+  return resolveSiteLanguageContext(resolvedRoot, selectedFramework);
+}
+
 function inspectProject(projectRoot) {
   const resolvedRoot = path.resolve(projectRoot);
+  const framework = detectFramework(resolvedRoot);
   const localization = detectLocalization(resolvedRoot);
+  const siteLanguage = framework.framework
+    ? resolveSiteLanguageContext(resolvedRoot, framework.framework, localization)
+    : unresolvedSiteLanguage(
+      framework.ambiguous ? 'framework-ambiguous' : 'framework-unsupported'
+    );
+  const safeSiteLanguage = {
+    detected: siteLanguage.detected,
+    valid: siteLanguage.valid,
+    locale: siteLanguage.locale
+      ? sanitizeUntrustedText(siteLanguage.locale, 100)
+      : null,
+    direction: siteLanguage.direction
+      ? sanitizeUntrustedText(siteLanguage.direction, 20)
+      : null,
+    source: siteLanguage.source
+      ? sanitizeUntrustedText(siteLanguage.source, 500)
+      : null,
+    conflicts: siteLanguage.conflicts.map(
+      (value) => sanitizeUntrustedText(value, 500)
+    ),
+    ...(siteLanguage.reason
+      ? { reason: sanitizeUntrustedText(siteLanguage.reason, 100) }
+      : {}),
+    ...(siteLanguage.expectedSources
+      ? {
+        expectedSources: siteLanguage.expectedSources.map(
+          (value) => sanitizeUntrustedText(value, 500)
+        ),
+      }
+      : {}),
+  };
   const safeLocalization = {
     detected: localization.detected,
     valid: localization.valid,
@@ -1104,7 +1567,8 @@ function inspectProject(projectRoot) {
   };
   return {
     projectRoot: sanitizeUntrustedText(resolvedRoot, 1000),
-    framework: detectFramework(resolvedRoot),
+    framework,
+    siteLanguage: safeSiteLanguage,
     localization: safeLocalization,
   };
 }
@@ -1283,15 +1747,28 @@ function runCli() {
     process.stdout.write(`${JSON.stringify(inspectProject(args.projectRoot), null, 2)}\n`);
     return;
   }
+  if (args.command === 'detect-site-language' && args.projectRoot && args.framework) {
+    const result = detectSiteLanguageForFramework(args.projectRoot, args.framework);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
   if (args.command === 'validate-locales' && args.locales !== undefined) {
     const result = validateLocales(args.locales);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     process.exitCode = result.valid ? 0 : 1;
     return;
   }
+  if (args.command === 'resolve-locale' && args.locale !== undefined) {
+    const result = resolveLocale(args.locale);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.exitCode = result.valid ? 0 : 1;
+    return;
+  }
   process.stderr.write(
     'Usage: localization-config.js inspect --projectRoot <path> | ' +
-    'validate-locales --locales <comma-separated-tags>\n'
+    'detect-site-language --projectRoot <path> --framework <framework> | ' +
+    'validate-locales --locales <comma-separated-tags> | ' +
+    'resolve-locale --locale <language-tag>\n'
   );
   process.exitCode = 1;
 }
@@ -1307,9 +1784,16 @@ module.exports = {
   hasLocaleNavigationSignal,
   detectFramework,
   detectLocalization,
+  detectSiteLanguage,
+  detectSiteLanguageForFramework,
+  resolveSiteLanguageContext,
+  getLocaleDirection,
   inspectProject,
+  isSafeLocaleCandidate,
+  isSafeLocaleListCandidate,
   loadRegistry,
   resolveProjectRelativePath,
+  resolveLocale,
   validateLocalizationManifestShape,
   validateLocales,
   verifyInitializationEvidence,
