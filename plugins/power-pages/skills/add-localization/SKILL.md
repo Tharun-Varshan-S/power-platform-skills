@@ -221,8 +221,15 @@ npm-backed package selected during a new setup or repair, including the
 framework recommendation and any alternative, run:
 
 ```bash
-node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>"
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
 ```
+
+Pass the same telemetry context on every rerun, including unsupported,
+inconclusive, prerelease-confirmation, official-evidence, and explicitly
+unverified attempts. The script emits only the normalized package name,
+resolved public version when available, intended canonical locales, validation
+status, and stable failure codes. It never emits npm error text or evidence
+URLs.
 
 <!-- not-a-gate: prerelease acknowledgement still precedes the approved plan and any install -->
 
@@ -257,11 +264,11 @@ legal approval. For review and acceptance, require explicit maker confirmation,
 then rerun with:
 
 ```bash
-node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --confirmLicenseReview
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --confirmLicenseReview --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
 ```
 
-Preserve the same telemetry arguments from the original command. This
-confirmation overrides only the license criterion. Missing evidence,
+Preserve any other previously approved validation flags from the original
+command. This confirmation overrides only the license criterion. Missing evidence,
 deprecation, maintenance, compatibility, mode, and package-health failures
 continue to block.
 
@@ -272,7 +279,13 @@ mode-evidence result with `AskUserQuestion`:
 |---|---|---|
 | The package's runtime/static support could not be verified. How should this proceed? | Package evidence | Use the framework recommendation (Recommended), Provide an official documentation URL, Proceed as explicitly unverified, Cancel |
 
-For an official URL, rerun with `--modeEvidenceUrl "<HTTPS_URL>"`. The script
+For an official URL, rerun with:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --modeEvidenceUrl "<HTTPS_URL>" --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
+```
+
+Preserve any other previously approved validation flags. The script
 accepts only the package homepage or repository hostname published in npm
 metadata, rejects local/internal hosts, fetches at most 1 MiB, strips active
 HTML content, and returns bounded plain text in
@@ -311,7 +324,7 @@ section, or when a condition cannot be checked.
 Write the classification to a temporary project-relative JSON file and rerun:
 
 ```bash
-node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --modeEvidenceUrl "<HTTPS_URL>" --modeEvidenceClassificationFile "<PROJECT_RELATIVE_JSON_PATH>"
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --modeEvidenceUrl "<HTTPS_URL>" --modeEvidenceClassificationFile "<PROJECT_RELATIVE_JSON_PATH>" --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
 ```
 
 The script verifies the classification shape, requested mode, URL, and that
@@ -326,11 +339,23 @@ classification file after the rerun.
 - `inconclusive`: return to the package-evidence question above.
 
 For an unverified override, explain that completion requires successful build
-and browser verification, obtain explicit confirmation, and rerun with
-`--allowUnverifiedMode`. Never use that flag for an unsupported result.
+and browser verification, obtain explicit confirmation, and rerun with:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --allowUnverifiedMode --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
+```
+
+Never use that flag for an unsupported result. Preserve any other previously
+approved validation flags.
 
 A prerelease requires a separate explicit `AskUserQuestion` confirmation and
-rerun with `--allowPrerelease`.
+rerun with:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/validate-i18n-package.js" --projectRoot "<PROJECT_ROOT>" --framework "<FRAMEWORK>" --package "<PACKAGE>" --version "<VERSION_OR_RANGE>" --mode "<runtime|static>" --allowPrerelease --telemetryLocales "<CANONICAL_RESULTING_LOCALES>" --telemetryOperation "<create|add-languages|repair|reconfigure>" --telemetryPackageSelection "<recommended|alternative|preserved>"
+```
+
+Preserve any other previously approved validation flags.
 
 For any alternative package whose initialization is not recognized by
 deterministic discovery, identify the repository-relative initialization file
@@ -411,6 +436,43 @@ Use `AskUserQuestion`:
 
 Loop through Phase 2 for revisions. Do not install or edit before approval.
 
+After approval, emit the final configuration before Phase 4 changes any files:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/emit-skill-configured-telemetry.js" --skillName "add-localization" --projectRoot "<PROJECT_ROOT>" --framework "<react|vue|angular|astro>" --operation "<create|add-languages|repair|reconfigure>" --invocationSource "<direct|create-site>" --existingLocalizationDetected "<true|false>" --mode "<runtime|static>" --defaultLocale "<DEFAULT_LOCALE>" --addedLocales "<CANONICAL_ADDED_LOCALES>" --resultingLocales "<CANONICAL_RESULTING_LOCALES>" --packageName "<PACKAGE_NAME>" --packageVersion "<RESOLVED_VERSION_OR_BUILT_IN>" --packageSelection "<recommended|alternative|preserved>" --packageVerification "<verified|unverified>" --translationMethod "<agent|blank>"
+```
+
+`invocationSource` is `create-site` only when `$ARGUMENTS` contains
+`[FROM_CREATE_SITE]`; otherwise it is `direct`. For add-languages mode,
+`addedLocales` contains only genuinely new locales while `resultingLocales`
+contains the complete resulting set. The helper strips private-use and extension
+subtags before emission.
+
+After this configuration event, emit a failure completion before any terminal
+workflow stop caused by implementation, verification, or explicit maker
+rejection. Do not emit failure while retrying a recoverable check, for a
+revision loop, or when deployment is skipped. Use only the matching stable
+classification:
+
+| Terminal reason | `errorClass` |
+|---|---|
+| Installed package no longer passes validation/provenance | `package-revalidation-failed` |
+| Localization validator cannot be remediated | `localization-validation-failed` |
+| Project build cannot be remediated | `localization-build-failed` |
+| Rendered/browser verification cannot be remediated | `browser-verification-failed` |
+| Final site-integrity errors cannot be remediated | `site-integrity-validation-failed` |
+| Maker explicitly rejects the implemented localization and ends the workflow | `maker-rejected` |
+
+Run the matching command silently immediately before the terminal stop:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/emit-localization-completed-telemetry.js" --projectRoot "<PROJECT_ROOT>" --outcome "failure" --validationOutcome "failed" --errorClass "<STABLE_ERROR_CLASS>"
+```
+
+Never pass raw errors, file paths, URLs, user text, or dynamically invented
+classifications. An abrupt host/process termination cannot run this best-effort
+command; its invocation state expires normally.
+
 ---
 
 ## Phase 4: Configure localization infrastructure
@@ -437,8 +499,9 @@ result. Require all of the following before editing localization files:
 - `lockfileProvenance.present` and `lockfileProvenance.verified` are both
   `true`.
 
-If any check fails, stop. Do not delete or rewrite a conflicting lockfile
-entry outside the approved repair plan. Follow
+If any check fails and cannot be remediated, emit failure completion with
+`package-revalidation-failed`, then stop. Do not delete or rewrite a
+conflicting lockfile entry outside the approved repair plan. Follow
 `${PLUGIN_ROOT}/references/i18n-frameworks.md` for the selected framework/mode.
 
 Adopt valid existing conventions rather than creating a second initialization
@@ -542,9 +605,12 @@ Run the independent validator:
 node "${PLUGIN_ROOT}/skills/add-localization/scripts/validate-localization.js" --projectRoot "<PROJECT_ROOT>"
 ```
 Fix all reported errors.
+If the errors cannot be remediated and the workflow must end, emit failure
+completion with `localization-validation-failed` before stopping.
 
-Run the project's existing build. Start or reuse its dev server and verify
-with Playwright:
+Run the project's existing build. If the build cannot be remediated, emit
+failure completion with `localization-build-failed` before stopping. Start or
+reuse its dev server and verify with Playwright:
 
 - Default locale and one target locale.
 - Selector behavior or equivalent static locale navigation.
@@ -566,8 +632,9 @@ that stale resource requests cannot overwrite a newer selection.
 
 For an explicitly unverified package, all build, initialization, switching or
 route navigation, resource loading, `lang`/`dir`, and console checks are
-mandatory. If any check fails, stop and recommend the framework package; do
-not silently replace the approved package.
+mandatory. If any browser or rendered check fails and cannot be remediated,
+emit failure completion with `browser-verification-failed`, then stop and
+recommend the framework package; do not silently replace the approved package.
 
 Repeat the AI translation warning when applicable.
 
@@ -580,9 +647,11 @@ are complete, run:
 node "${PLUGIN_ROOT}/scripts/validate-site-integrity.js" --projectRoot "<PROJECT_ROOT>"
 ```
 
-Fix every blocking error before reviewing or completing the skill. Inspect and report review
-findings in both directions and with expanded content. Rerun this gate after any subsequent source
-change.
+Fix every blocking error before reviewing or completing the skill. If the
+blocking errors cannot be remediated, emit failure completion with
+`site-integrity-validation-failed` before stopping. Inspect and report review
+findings in both directions and with expanded content. Rerun this gate after
+any subsequent source change.
 
 ---
 
@@ -631,6 +700,17 @@ offer deployment in Phase 8.
 > Reference: `${PLUGIN_ROOT}/references/skill-tracking-reference.md`
 
 Record usage with skill name `AddLocalization`.
+
+After usage is recorded, emit completion telemetry. This command runs only
+after implementation, validation, build, browser verification, and maker
+review are complete:
+
+```bash
+node "${PLUGIN_ROOT}/scripts/emit-localization-completed-telemetry.js" --projectRoot "<PROJECT_ROOT>" --outcome "success" --validationOutcome "passed"
+```
+
+Run it silently. The helper is fail-closed and reads only the approved
+localization manifest fields; do not add free-text arguments.
 
 If `$ARGUMENTS` contains `[FROM_CREATE_SITE]`, return control to create-site
 without asking about deployment.

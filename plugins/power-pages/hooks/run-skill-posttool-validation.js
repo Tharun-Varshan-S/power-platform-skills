@@ -31,6 +31,7 @@ process.stdin.on('end', () => {
   let validatorStatus = 0;
   let skillName = null;
   let input = null;
+  let cwd = process.cwd();
 
   try {
     input = JSON.parse(inputData);
@@ -40,7 +41,7 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    const cwd = input.cwd || process.cwd();
+    cwd = input.cwd || process.cwd();
 
     const validatorScript = getValidatorScript(skillName);
     if (validatorScript) {

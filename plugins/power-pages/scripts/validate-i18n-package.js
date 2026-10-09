@@ -23,6 +23,14 @@ const {
   sanitizeUntrustedText,
 } = require('./lib/safe-untrusted-text');
 
+let telemetry = null;
+try {
+  telemetry = require('./lib/telemetry/power-pages-telemetry');
+} catch {
+  // Telemetry is optional. Package validation must remain available when the
+  // bundled telemetry module is missing, invalid, or has a load-time failure.
+}
+
 const MAX_EVIDENCE_TEXT_CHARS = 200000;
 const MAX_NPM_METADATA_BYTES = 10 * 1024 * 1024;
 const OFFICIAL_NPM_REGISTRY = 'https://registry.npmjs.org/';
@@ -872,6 +880,21 @@ function parseArgs(argv) {
   return args;
 }
 
+function parseTelemetryErrorContext(argv) {
+  const args = parseArgs(argv);
+  for (const required of ['projectRoot', 'package', 'mode']) {
+    const value = args[required];
+    if (typeof value !== 'string' || !value.trim() ||
+        value.startsWith('--')) {
+      return null;
+    }
+  }
+  return {
+    ...args,
+    projectRoot: path.resolve(args.projectRoot),
+  };
+}
+
 async function runCli() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.projectRoot || !args.package || !args.mode) {
@@ -881,7 +904,10 @@ async function runCli() {
       '--mode <runtime|static> [--modeEvidenceUrl <official-https-url>] ' +
       '[--modeEvidenceClassificationFile <project-relative-json-path>] ' +
       '[--allowPrerelease] [--allowUnverifiedMode] ' +
-      '[--confirmLicenseReview]'
+      '[--confirmLicenseReview] ' +
+      '[--telemetryLocales <canonical-tags>] ' +
+      '[--telemetryOperation <operation>] ' +
+      '[--telemetryPackageSelection <selection>]'
     );
   }
   const projectRoot = path.resolve(args.projectRoot);
@@ -915,7 +941,13 @@ async function runCli() {
       projectDependencies[peerName]
     );
   }
-  const metadata = await resolvePackage(args.package, args.version || 'latest');
+  let metadata;
+  try {
+    metadata = await resolvePackage(args.package, args.version || 'latest');
+  } catch (error) {
+    error.telemetryFailureCode = 'npm-resolution-failed';
+    throw error;
+  }
   let modeEvidenceDocument = null;
   let modeEvidenceClassification = null;
   let modeEvidenceUrl = null;
@@ -985,12 +1017,57 @@ async function runCli() {
     ),
     rangeSatisfies: versionSatisfiesRangeWithNpm,
   });
+  if (telemetry) {
+    try {
+      telemetry.emitPackageValidation(
+        projectRoot,
+        telemetry.buildPackageValidationEventInfo({
+          framework,
+          operation: args.telemetryOperation,
+          intendedLocales: args.telemetryLocales,
+          packageName: args.package,
+          resolvedVersion: result.version,
+          packageSelection: args.telemetryPackageSelection,
+          mode: args.mode,
+          validationStatus: result.status,
+          failureCodes: result.failureCodes,
+          prerelease: result.prerelease,
+          unverifiedOverrideRequested: Boolean(args.allowUnverifiedMode),
+        })
+      );
+    } catch {
+      // Package validation results must not depend on telemetry availability.
+    }
+  }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exitCode = result.viable ? 0 : 1;
 }
 
 if (require.main === module) {
-  runCli().catch(() => {
+  runCli().catch((error) => {
+    try {
+      const args = parseTelemetryErrorContext(process.argv.slice(2));
+      if (args && telemetry) {
+        telemetry.emitPackageValidation(
+          args.projectRoot,
+          telemetry.buildPackageValidationEventInfo({
+            framework: args.framework,
+            operation: args.telemetryOperation,
+            intendedLocales: args.telemetryLocales,
+            packageName: args.package,
+            packageSelection: args.telemetryPackageSelection,
+            mode: args.mode,
+            validationStatus: 'error',
+            failureCodes: [
+              error.telemetryFailureCode || 'package-validation-error',
+            ],
+            unverifiedOverrideRequested: Boolean(args.allowUnverifiedMode),
+          })
+        );
+      }
+    } catch {
+      // Preserve the original validation failure.
+    }
     process.stderr.write(
       'Localization package validation failed before a result could be produced.\n'
     );
@@ -1011,6 +1088,7 @@ module.exports = {
   modeSupported,
   normalizeLicense,
   packageSupportsFramework,
+  parseTelemetryErrorContext,
   peerRangeAllowsMajor,
   resolveInstalledVersion,
   validateOfficialArtifactMetadata,
