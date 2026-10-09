@@ -8,7 +8,7 @@ description: >-
   template for, or scaffold a new Power Pages website or portal.
 user-invocable: true
 argument-hint: Optional site description
-allowed-tools: Read, Write, Edit, Grep, Glob, Bash, WebSearch, AskUserQuestion, Task, TaskCreate, TaskUpdate, TaskList, mcp__plugin_power-pages_playwright__browser_navigate, mcp__plugin_power-pages_playwright__browser_snapshot, mcp__plugin_power-pages_playwright__browser_click, mcp__plugin_power-pages_playwright__browser_take_screenshot, mcp__plugin_power-pages_playwright__browser_evaluate
+allowed-tools: Read, Write, Edit, Grep, Glob, Bash, WebSearch, AskUserQuestion, Task, TaskCreate, TaskUpdate, TaskList, Skill, mcp__plugin_power-pages_playwright__browser_navigate, mcp__plugin_power-pages_playwright__browser_snapshot, mcp__plugin_power-pages_playwright__browser_click, mcp__plugin_power-pages_playwright__browser_take_screenshot, mcp__plugin_power-pages_playwright__browser_evaluate
 model: opus
 ---
 
@@ -1125,6 +1125,44 @@ Use `AskUserQuestion`, naming each failing critical gate and its evidence in the
 
 **Output**: All pages, components, and design elements implemented, critiqued, and verified
 
+### 5.8 Offer and Add Localization
+
+Ask whether localization should be added now:
+
+> **Would you like to add localization support to this site now?**
+> This localizes only the SPA user interface; it does not add languages to your Dataverse environment.
+
+<!-- not-a-gate: this selects whether to enter the child workflow, whose Phase 3 gate approves every localization write -->
+
+Use `AskUserQuestion` with this exact wording and these exact options:
+
+| Question | Header | Options |
+|----------|--------|---------|
+| Would you like to add localization support to this site now?<br><br>This localizes only the SPA user interface; it does not add languages to your Dataverse environment. | Localization | Yes — configure localization now, No — keep this site single-language |
+
+Record the answer as `LOCALIZATION_REQUESTED=true|false`. Ask at this point even
+when `$ARGUMENTS` mentioned localization, so the maker's answer immediately
+determines whether the child workflow starts.
+
+When `LOCALIZATION_REQUESTED=true`, invoke:
+
+```text
+/power-pages:add-localization <PROJECT_ROOT> [FROM_CREATE_SITE]
+```
+
+Wait for the skill to complete before accessibility verification. The child
+skill owns locale/package questions, translation generation, selector wiring,
+its implementation review, build, and localization checks. The
+`[FROM_CREATE_SITE]` context prevents a duplicate deployment prompt; control
+returns here so create-site can run accessibility verification, final review,
+and its existing deployment prompt.
+
+When `LOCALIZATION_REQUESTED=false`, skip the child workflow.
+
+> **GATE: Do NOT proceed to Phase 6 until the Phase 5.7 design critique is complete and any requested localization has completed.**
+
+**Output**: All pages, components, design elements, and requested localization implemented and verified
+
 ---
 
 ## Phase 6: Accessibility Verification
@@ -1273,6 +1311,8 @@ Present a summary table to the user:
    - Sample content to replace before launch - every `SAMPLE CONTENT` marker with its file, or "None"
 7. Suggest optional enhancement skills:
    - `/setup-datamodel` — Create Dataverse tables for dynamic content
+   - `/add-localization` — Add or extend SPA languages (suggest only when
+     `LOCALIZATION_REQUESTED=false`)
    - `/add-seo` — Add meta tags, robots.txt, sitemap.xml, favicon
    - `/add-tests` — Add unit tests (Vitest) and E2E tests (Playwright)
    - `/add-ai-webapi` — Add generative-AI summaries (Search Summary and Data Summarization). **Recommend first when `AI_SUMMARY_PLACEMENTS` from Phase 3 is non-empty** — the pages already carry `POWERPAGES:AI-SLOT` comment markers at the intended insertion points, so the follow-up skill's explore step finds them deterministically and the user gets the AI surface they picked during discovery without any page redesign.
@@ -1325,7 +1365,7 @@ After Phase 1.5 selects the from-scratch path, append the existing from-scratch 
 | Scaffold and launch dev server | Scaffolding project | Copy template, replace placeholders with defaults, git init, npm install, start dev server, share URL |
 | Plan site components | Planning components | Determine pages, components, design direction, and routes while user previews scaffold |
 | Approve implementation plan | Getting plan approval | Present implementation plan covering design and pages, get user approval |
-| Implement pages and components | Building site | Apply design tokens, create all pages, components, routing, navigation, then run the design critique pass |
+| Implement pages and components | Building site | Apply design tokens, create all pages, components, routing, and navigation, run the design critique pass, then ask whether to configure localization |
 | Verify accessibility with axe-core | Verifying accessibility | Run axe-core on every page, fix all critical/serious violations, re-verify until passing |
 | Review with user | Reviewing site | Navigate all pages, share URL, get user feedback, apply changes |
 | Deploy and wrap up | Deploying site | Ask about deployment, present summary, suggest next steps |
