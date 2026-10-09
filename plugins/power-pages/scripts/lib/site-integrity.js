@@ -3,18 +3,19 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  classifyLocaleDirections,
-  getLocaleDirection,
   MANIFEST_NAME,
 } = require('./localization-config');
 const {
   auditBidirectionalReadiness,
 } = require('./bidirectional-readiness');
 const {
+  partitionDeferredFindings,
+} = require('./bidirectional-finding-disposition');
+const {
   validateLocalization,
 } = require('../../skills/add-localization/scripts/validate-localization');
 
-function validateSiteIntegrity(projectRoot) {
+function validateSiteIntegrity(projectRoot, options = {}) {
   const configPath = path.join(projectRoot, 'powerpages.config.json');
   if (!fs.existsSync(configPath)) {
     return {
@@ -26,29 +27,28 @@ function validateSiteIntegrity(projectRoot) {
     };
   }
 
-  const localizationErrors = validateLocalization(projectRoot);
+  // A verified-but-unfinalized localization transaction is acceptable only at
+  // add-localization's own pre-review gate, where the maker has not yet decided
+  // whether the exposed target locales are ready, approved with limitations, or
+  // kept unavailable. Every other caller — deploy-site and the final gate of
+  // every other source-mutating skill — keeps this off, so a remaining
+  // transaction still blocks completion and deployment (fail-closed).
+  const localizationErrors = options.skipLocalization === true
+    ? []
+    : validateLocalization(projectRoot, {
+      allowVerifiedTransactionReview:
+        options.allowVerifiedLocalizationReview === true,
+    });
   const bidiAudit = auditBidirectionalReadiness(projectRoot);
   const manifest = readJson(path.join(projectRoot, MANIFEST_NAME));
-  const directionSet = Array.isArray(manifest?.locales)
-    ? classifyLocaleDirections(manifest.locales)
-    : null;
   const unavailableLocales = new Set(
     Array.isArray(manifest?.unavailableLocales)
       ? manifest.unavailableLocales
       : []
   );
-  const defaultDirection = manifest?.defaultLocale
-    ? getLocaleDirection(manifest.defaultLocale)
-    : null;
-  const oppositeLocales = Array.isArray(manifest?.locales) && defaultDirection
-    ? manifest.locales.filter((locale) => getLocaleDirection(locale) !== defaultDirection)
-    : [];
   const remediationPending =
     manifest?.bidirectionalReadiness?.status === 'pending-remediation' &&
-    directionSet?.classification === 'mixed' &&
-    oppositeLocales.length > 0 &&
-    oppositeLocales.every((locale) => unavailableLocales.has(locale)) &&
-    localizationErrors.length === 0;
+    unavailableLocales.size > 0;
   const recordedFindings = remediationPending
     ? manifest.bidirectionalReadiness.findings || []
     : [];
@@ -56,51 +56,31 @@ function validateSiteIntegrity(projectRoot) {
     blocking: blockingBidiFindings,
     deferred,
   } = partitionDeferredFindings(
-    bidiAudit.findings.filter((finding) => finding.severity === 'error'),
-    recordedFindings
+    bidiAudit.findings,
+    recordedFindings,
+    unavailableLocales
   );
   const deferredFindings = deferred.map((finding) => ({
     ...finding,
     severity: 'review',
-    message: `Deferred while opposite-direction locales are unavailable: ${finding.message}`,
+    message: `Deferred while affected locales are unavailable: ${finding.message}`,
   }));
+  const errors = [
+    ...new Set([
+      ...localizationErrors,
+      ...blockingBidiFindings.map(formatBidiFinding),
+    ]),
+  ];
 
   return {
     projectRoot,
     skipped: false,
-    errors: [...localizationErrors, ...blockingBidiFindings.map(formatBidiFinding)],
+    errors,
     reviewFindings: [
       ...bidiAudit.findings.filter((finding) => finding.severity === 'review'),
       ...deferredFindings,
     ],
   };
-}
-
-function partitionDeferredFindings(findings, recordedFindings) {
-  const remainingRecords = [...recordedFindings];
-  const blocking = [];
-  const deferred = [];
-  for (const finding of findings) {
-    // Only a concrete layout blocker may be carried as pending work. Match the
-    // complete scanner identity and consume it once, so changing or adding a
-    // declaration on the same line is still a new blocking defect.
-    const recordIndex = finding.rule === 'directional-physical-css'
-      ? remainingRecords.findIndex((recorded) =>
-        recorded &&
-        recorded.rule === finding.rule &&
-        recorded.file === finding.file &&
-        recorded.line === finding.line &&
-        recorded.message === finding.message
-      )
-      : -1;
-    if (recordIndex === -1) {
-      blocking.push(finding);
-      continue;
-    }
-    remainingRecords.splice(recordIndex, 1);
-    deferred.push(finding);
-  }
-  return { blocking, deferred };
 }
 
 function readJson(filePath) {
