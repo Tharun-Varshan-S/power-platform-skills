@@ -17,6 +17,9 @@ model: opus
 Use its resolved absolute `working_dir` for every shell call and file tool,
 including referenced commands and delegated skills; never inherit a prior `cd`.
 
+**Entry routing:** use the shared [App feature entry points](../../shared/shared-instructions.md#app-feature-entry-points)
+preflight before the workflow below.
+
 **Invocation scope:** follow [Data-source invocation scope](../../shared/shared-instructions.md#data-source-invocation-scope)
 before the workflow below. Standalone calls use this skill's own data-delta
 approval and verification; do not start a full-app plan or screen workflow.
@@ -101,8 +104,8 @@ artifact flags in Step 2a. When all are present, only confirm
 `native-app-plan.md` exists for hash validation; do not parse its Data Model
 section or build operations/service lists from Markdown.
 
-For all non-fast-path Dataverse proposals from `/setup-datamodel` or a standalone
-request, including an existing-plan delta, read and execute
+For all non-fast-path Dataverse proposals from `/setup-datamodel`, `/edit-app`, or
+a standalone request, including an existing-plan delta, read and execute
 [dataverse-change-planning.md](../../shared/references/dataverse-change-planning.md).
 Use its scoped evidence/contract for the diagram, architect, or inline path.
 An approved child with `planning_snapshot`, `architect_evidence`, and
@@ -110,13 +113,13 @@ An approved child with `planning_snapshot`, `architect_evidence`, and
 not rediscover or re-approve it. New-binding requests use this planning path;
 service-only refreshes and retirements have already returned from their branches.
 
-Older callers, including existing `/edit-app`, may not supply the new structured
-handoff. Do not assume compact evidence or complete approval from the caller's
-name. Without a complete approved handoff, resolve the current requested delta
-and use this leaf's normal proposal and Step 2.7 approval path before execution.
-Resolve required invocation context first; a missing or conflicting child root
-still returns `NEEDS_CONTEXT` before project access. Never silently replay the
-saved plan or treat `--skip-planning` as consent.
+Older callers may not supply the new structured handoff. Do not assume compact
+evidence or complete approval from the caller's name. Without a complete approved
+handoff, resolve the current requested delta and use this leaf's normal proposal
+and Step 2.7 approval path before execution. Resolve required invocation context
+first; a missing or conflicting child root still returns `NEEDS_CONTEXT` before
+project access. Never silently replay the saved plan or treat `--skip-planning`
+as consent.
 
 An approved legacy child without compact-planning artifacts keeps the supported
 Markdown/live-reconciliation path below only when its current request, absolute

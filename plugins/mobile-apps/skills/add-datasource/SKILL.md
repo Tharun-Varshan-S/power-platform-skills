@@ -12,6 +12,9 @@ model: sonnet
 
 # Add Data Source
 
+**Entry routing:** use the shared [App feature entry points](../../shared/shared-instructions.md#app-feature-entry-points)
+preflight before the workflow below.
+
 **Invocation scope:** follow [Data-source invocation scope](../../shared/shared-instructions.md#data-source-invocation-scope)
 before any project read or the workflow below. Resolve the absolute app root
 before reading memory-bank. Routing selects a data workflow, not implementation

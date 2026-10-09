@@ -17,6 +17,9 @@ model: sonnet
 Use its resolved absolute `working_dir` for every shell call and file tool,
 including referenced commands and delegated skills; never inherit a prior `cd`.
 
+**Entry routing:** use the shared [App feature entry points](../../shared/shared-instructions.md#app-feature-entry-points)
+preflight before the workflow below.
+
 **Invocation scope:** follow [Data-source invocation scope](../../shared/shared-instructions.md#data-source-invocation-scope)
 before the workflow below. This skill owns connector bindings and generated
 services, not a full-app plan or screen implementation.

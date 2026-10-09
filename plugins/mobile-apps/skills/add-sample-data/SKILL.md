@@ -12,10 +12,10 @@ model: sonnet
 
 # Add Sample Data
 
-**Invocation scope:** follow [Data-source invocation scope](../../shared/shared-instructions.md#data-source-invocation-scope)
-before any project read or command. Bind the absolute `working_dir` first and
-reuse it for every shell call, file tool, media path, and retry. This data-only
-workflow does not require creating a full app plan or changing screens.
+**App root:** before any project read or command, execute
+[app-working-directory.md](${PLUGIN_ROOT}/shared/references/app-working-directory.md).
+Use its resolved absolute `working_dir` for every shell call and file tool,
+including media paths and retries; never inherit a prior `cd`.
 
 Populate Dataverse tables with realistic sample records so a freshly-scaffolded code app shows real-looking data on first launch. Generates rows from each table's schema and inserts them in dependency order. Use after `/add-dataverse` (or `/setup-datamodel`) has created the tables.
 
@@ -253,7 +253,7 @@ For the selected tables, build a dependency graph from lookup columns:
 
 If a selected table references an UNSELECTED parent, reuse a verified existing
 parent record through a bounded read when that lookup is within the approved
-data scope. Reading a lookup parent is not permission to insert/update it. If no
+feature. Reading a lookup parent is not permission to insert/update it. If no
 suitable record exists, return `NEEDS_CONTEXT` to the owner (or ask standalone)
 to extend the seed scope or explicitly omit an optional lookup. Never auto-add
 a parent to `seedTables`, create a retiring parent, or omit a required lookup.
